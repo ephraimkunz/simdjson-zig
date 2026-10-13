@@ -55,14 +55,10 @@ pub fn parseFromSlice(
         std.debug.print("{}\n", .{e});
         return std.json.ParseFromValueError.InvalidCharacter;
     };
-    const tape = sj.sj_parser_get_tape_view(parser);
-    if (tape.tape_ptr == null or tape.tape_len == 0) {
-        return std.json.ParseFromValueError.MissingField;
-    }
+    const c_tape = sj.sj_parser_get_tape_view(parser);
+    const tape = Tape.init(c_tape);
 
-    const tape_slice = tape.tape_ptr[0..tape.tape_len];
-
-    std.debug.print("{d}\n", .{tape_slice[0] & 0x00ffffffffffffff});
+    std.debug.print("{d}\n", .{tape.tape.len});
 
     return std.json.ParseFromValueError.DuplicateField;
 }
@@ -81,6 +77,15 @@ pub fn minify(str: []const u8, out_buf: []u8) Error!usize {
 pub fn validate_utf8(str: []const u8) bool {
     return sj.sj_validate_utf8(str.ptr, str.len);
 }
+
+const Tape = struct {
+    tape: []u64,
+    string_buf: []u8,
+
+    fn init(c_tape: sj.sj_tape) Tape {
+        return .{ .tape = c_tape.tape_ptr[0..c_tape.tape_len], .string_buf = c_tape.string_buf_ptr[0..c_tape.string_buf_len] };
+    }
+};
 
 /// Mirrors simdjson::error_code. Values must match the C++ header.
 const ErrorCode = enum(c_int) {
