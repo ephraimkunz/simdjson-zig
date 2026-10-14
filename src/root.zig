@@ -47,10 +47,11 @@ pub const TapeTokenSource = struct {
     tape: Tape,
     pos: usize = 1, // Skip the first r entry.
     gpa: std.mem.Allocator,
-    pub const NextError = AllocError;
-    pub const PeekError = std.json.Scanner.Error;
-    pub const SkipError = error{};
-    pub const AllocError = std.mem.Allocator.Error;
+
+    pub const NextError = std.json.Scanner.NextError;
+    pub const PeekError = std.json.Scanner.PeekError;
+    pub const SkipError = std.json.Scanner.SkipError;
+    pub const AllocError = std.json.Scanner.AllocError;
 
     pub fn peekNextTokenType(self: *TapeTokenSource) TapeTokenSource.PeekError!TokenType {
         const val = self.tape.tape[self.pos];
@@ -90,7 +91,7 @@ pub const TapeTokenSource = struct {
     }
 
     /// https://ziglang.org/documentation/master/std/#std.json.Scanner.Token
-    pub fn nextAllocMax(self: *TapeTokenSource, allocator: std.mem.Allocator, when: std.json.AllocWhen, max_value_len: usize) TapeTokenSource.AllocError!Token {
+    pub fn nextAllocMax(self: *TapeTokenSource, allocator: std.mem.Allocator, when: std.json.AllocWhen, max_value_len: usize) !Token {
         _ = max_value_len;
         return self.next_internal(allocator, when);
     }
@@ -164,7 +165,7 @@ pub fn parseFromSlice(
     allocator: std.mem.Allocator,
     s: []const u8,
     options: std.json.ParseOptions,
-) std.json.ParseError(TapeTokenSource)!std.json.Parsed(T) {
+) std.json.ParseError(std.json.Scanner)!std.json.Parsed(T) {
     const parser = sj.sj_parser_new();
     defer sj.sj_parser_free(parser);
 
@@ -174,6 +175,7 @@ pub fn parseFromSlice(
             Error.Utf8Error => return std.json.Scanner.Error.SyntaxError,
             Error.DepthError => return std.json.ParseFromValueError.UnexpectedToken,
             Error.BigIntError => return std.json.ParseFromValueError.Overflow,
+            Error.UnescapedChars => return std.json.Scanner.Error.SyntaxError,
             else => unreachable,
         }
     };
@@ -330,6 +332,13 @@ test "parseFromSlice union" {
     const result = try parseFromSlice(U, std.testing.allocator, source, .{});
     defer result.deinit();
     try std.testing.expectEqual(U{ .cat = -3 }, result.value);
+}
+
+test "parseFromSlice unescaped chars" {
+    const source = "\"This is a test\n\"";
+
+    try std.testing.expectError(std.json.Scanner.Error.SyntaxError, parseFromSlice([]u8, std.testing.allocator, source, .{}));
+    try std.testing.expectError(std.json.Scanner.Error.SyntaxError, std.json.parseFromSlice([]u8, std.testing.allocator, source, .{}));
 }
 
 test "parseFromSlice unknown field" {
@@ -577,4 +586,39 @@ test validate_utf8 {
 
 test "validate_utf8 invalid" {
     try std.testing.expect(!validate_utf8("Hello \xff World"));
+}
+
+test "fuzz parseFromSlice" {
+    const t = struct {
+        var data: [1_000_000_000]u8 = undefined;
+        fn fuzz_parseFromSlice(_: void, smith: *std.testing.Smith) !void {
+            const len = smith.slice(&data);
+            _ = parseFromSlice(u8, std.testing.allocator, data[0..len], .{}) catch {};
+        }
+    };
+    try std.testing.fuzz({}, t.fuzz_parseFromSlice, .{});
+}
+
+test "fuzz validateUTF8" {
+    const t = struct {
+        var data: [1_000_000_000]u8 = undefined;
+        fn fuzz_validateUTF8(_: void, smith: *std.testing.Smith) !void {
+            const len = smith.slice(&data);
+            _ = validate_utf8(data[0..len]);
+        }
+    };
+    try std.testing.fuzz({}, t.fuzz_validateUTF8, .{});
+}
+
+test "fuzz minify" {
+    const t = struct {
+        var input: [1_000_000_000]u8 = undefined;
+        var output: [1_000_000_000]u8 = undefined;
+        fn fuzz_minify(_: void, smith: *std.testing.Smith) !void {
+            const in_len = smith.slice(&input);
+            const out_len = smith.slice(&output);
+            _ = minify(input[0..in_len], output[0..out_len]) catch {};
+        }
+    };
+    try std.testing.fuzz({}, t.fuzz_minify, .{});
 }
