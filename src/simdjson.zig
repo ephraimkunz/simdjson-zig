@@ -1,47 +1,12 @@
 const std = @import("std");
 const sj = @import("simdjson");
+const err = @import("error.zig");
 
-pub const Error = error{
-    Capacity,
-    MemAlloc,
-    TapeError,
-    DepthError,
-    StringError,
-    TAtomError,
-    FAtomError,
-    NAtomError,
-    NumberError,
-    BigIntError,
-    Utf8Error,
-    Uninitialized,
-    Empty,
-    UnescapedChars,
-    UnclosedString,
-    UnsupportedArchitecture,
-    IncorrectType,
-    NumberOutOfRange,
-    IndexOutOfBounds,
-    NoSuchField,
-    IoError,
-    InvalidJsonPointer,
-    InvalidUriFragment,
-    UnexpectedError,
-    ParserInUse,
-    OutOfOrderIteration,
-    InsufficientPadding,
-    IncompleteArrayOrObject,
-    ScalarDocumentAsValue,
-    OutOfBounds,
-    TrailingContent,
-    OutOfCapacity,
-    UnknownField,
-    /// Code we don't recognize (newer simdjson than the binding)
-    Unknown,
-};
+pub const minify = @import("minify.zig").minify;
+pub const validate_utf8 = @import("validateUTF8.zig").validate_utf8;
 
 const Token = std.json.Token;
 const TokenType = std.json.TokenType;
-const JSON_VALUE_MASK: u64 = 0x00FF_FFFF_FFFF_FFFF;
 
 pub const TapeTokenSource = struct {
     tape: Tape,
@@ -120,7 +85,7 @@ pub const TapeTokenSource = struct {
             '}' => return Token.object_end,
             'r' => return Token.end_of_document,
             '"' => {
-                const index = JSON_VALUE_MASK & val;
+                const index = 0x00FF_FFFF_FFFF_FFFF & val;
                 const len = std.mem.readInt(u32, self.tape.string_buf[index .. index + 4][0..4], .little);
                 const s = self.tape.string_buf[index + 4 .. index + 4 + len];
 
@@ -169,13 +134,13 @@ pub fn parseFromSlice(
     const parser = sj.sj_parser_new();
     defer sj.sj_parser_free(parser);
 
-    check(sj.sj_parser_parse(parser, s.ptr, s.len)) catch |e| {
+    err.check(sj.sj_parser_parse(parser, s.ptr, s.len)) catch |e| {
         switch (e) {
-            Error.TapeError, Error.UnclosedString, Error.Empty => return std.json.Scanner.Error.UnexpectedEndOfInput,
-            Error.Utf8Error => return std.json.Scanner.Error.SyntaxError,
-            Error.DepthError => return std.json.ParseFromValueError.UnexpectedToken,
-            Error.BigIntError => return std.json.ParseFromValueError.Overflow,
-            Error.UnescapedChars => return std.json.Scanner.Error.SyntaxError,
+            err.Error.TapeError, err.Error.UnclosedString, err.Error.Empty => return std.json.Scanner.Error.UnexpectedEndOfInput,
+            err.Error.Utf8Error => return std.json.Scanner.Error.SyntaxError,
+            err.Error.DepthError => return std.json.ParseFromValueError.UnexpectedToken,
+            err.Error.BigIntError => return std.json.ParseFromValueError.Overflow,
+            err.Error.UnescapedChars => return std.json.Scanner.Error.SyntaxError,
             else => unreachable,
         }
     };
@@ -198,21 +163,6 @@ pub fn parseFromSlice(
     );
 }
 
-pub fn minify(str: []const u8, out_buf: []u8) Error!usize {
-    if (out_buf.len < str.len) {
-        return Error.Capacity;
-    }
-
-    var length: usize = 0;
-    const err_code = sj.sj_minify(str.ptr, str.len, out_buf.ptr, &length);
-    try check(err_code);
-    return length;
-}
-
-pub fn validate_utf8(str: []const u8) bool {
-    return sj.sj_validate_utf8(str.ptr, str.len);
-}
-
 const Tape = struct {
     tape: []u64,
     string_buf: [*]u8,
@@ -221,86 +171,6 @@ const Tape = struct {
         return .{ .tape = c_tape.tape_ptr[0..c_tape.tape_len], .string_buf = c_tape.string_buf_ptr };
     }
 };
-
-/// Mirrors simdjson::error_code. Values must match the C++ header.
-const ErrorCode = enum(c_int) {
-    success = 0,
-    capacity,
-    memalloc,
-    tape_error,
-    depth_error,
-    string_error,
-    t_atom_error,
-    f_atom_error,
-    n_atom_error,
-    number_error,
-    bigint_error,
-    utf8_error,
-    uninitialized,
-    empty,
-    unescaped_chars,
-    unclosed_string,
-    unsupported_architecture,
-    incorrect_type,
-    number_out_of_range,
-    index_out_of_bounds,
-    no_such_field,
-    io_error,
-    invalid_json_pointer,
-    invalid_uri_fragment,
-    unexpected_error,
-    parser_in_use,
-    out_of_order_iteration,
-    insufficient_padding,
-    incomplete_array_or_object,
-    scalar_document_as_value,
-    out_of_bounds,
-    trailing_content,
-    out_of_capacity,
-    unknown_field,
-    _,
-};
-
-fn check(code: c_int) Error!void {
-    const error_code: ErrorCode = @fromBackingInt(@intCast(code));
-    return switch (error_code) {
-        .success => {},
-        .capacity => error.Capacity,
-        .memalloc => error.MemAlloc,
-        .tape_error => error.TapeError,
-        .depth_error => error.DepthError,
-        .string_error => error.StringError,
-        .t_atom_error => error.TAtomError,
-        .f_atom_error => error.FAtomError,
-        .n_atom_error => error.NAtomError,
-        .number_error => error.NumberError,
-        .bigint_error => error.BigIntError,
-        .utf8_error => error.Utf8Error,
-        .uninitialized => error.Uninitialized,
-        .empty => error.Empty,
-        .unescaped_chars => error.UnescapedChars,
-        .unclosed_string => error.UnclosedString,
-        .unsupported_architecture => error.UnsupportedArchitecture,
-        .incorrect_type => error.IncorrectType,
-        .number_out_of_range => error.NumberOutOfRange,
-        .index_out_of_bounds => error.IndexOutOfBounds,
-        .no_such_field => error.NoSuchField,
-        .io_error => error.IoError,
-        .invalid_json_pointer => error.InvalidJsonPointer,
-        .invalid_uri_fragment => error.InvalidUriFragment,
-        .unexpected_error => error.UnexpectedError,
-        .parser_in_use => error.ParserInUse,
-        .out_of_order_iteration => error.OutOfOrderIteration,
-        .insufficient_padding => error.InsufficientPadding,
-        .incomplete_array_or_object => error.IncompleteArrayOrObject,
-        .scalar_document_as_value => error.ScalarDocumentAsValue,
-        .out_of_bounds => error.OutOfBounds,
-        .trailing_content => error.TrailingContent,
-        .out_of_capacity => error.OutOfCapacity,
-        .unknown_field => error.UnknownField,
-        _ => error.Unknown,
-    };
-}
 
 test "parseFromSlice fails" {
     const source =
@@ -547,47 +417,6 @@ test "alloc_if_needed: repeated parses don't alias each other" {
     try std.testing.expectEqualStrings("second-document-val!", second.value.name);
 }
 
-test minify {
-    const source =
-        \\ { "this is a test"  :
-        \\ "value"        }
-    ;
-    var out: [source.len]u8 = undefined;
-    const count = try minify(source, &out);
-    try std.testing.expectEqualSlices(u8, out[0..count], "{\"this is a test\":\"value\"}");
-}
-
-test "minify empty" {
-    var out: [0]u8 = undefined;
-    const count = minify(&.{}, &out);
-    try std.testing.expectEqual(0, count);
-}
-
-test "minify too small output buffer" {
-    const source =
-        \\ { "this is a test"  :
-        \\ "value"        }
-    ;
-    var out: [0]u8 = undefined;
-    const count = minify(source, &out);
-    try std.testing.expectError(Error.Capacity, count);
-}
-
-test "minify unterminated" {
-    const source = "\"this is a test";
-    var out: [source.len]u8 = undefined;
-    const count = minify(source, &out);
-    try std.testing.expectError(Error.UnclosedString, count);
-}
-
-test validate_utf8 {
-    try std.testing.expect(validate_utf8("this is a test"));
-}
-
-test "validate_utf8 invalid" {
-    try std.testing.expect(!validate_utf8("Hello \xff World"));
-}
-
 test "fuzz parseFromSlice" {
     const t = struct {
         var data: [1_000_000_000]u8 = undefined;
@@ -612,30 +441,6 @@ test "fuzz parseFromSlice" {
         }
     };
     try std.testing.fuzz({}, t.fuzz_parseFromSlice, .{});
-}
-
-test "fuzz validateUTF8" {
-    const t = struct {
-        var data: [1_000_000_000]u8 = undefined;
-        fn fuzz_validateUTF8(_: void, smith: *std.testing.Smith) !void {
-            const len = smith.slice(&data);
-            _ = validate_utf8(data[0..len]);
-        }
-    };
-    try std.testing.fuzz({}, t.fuzz_validateUTF8, .{});
-}
-
-test "fuzz minify" {
-    const t = struct {
-        var input: [1_000_000_000]u8 = undefined;
-        var output: [1_000_000_000]u8 = undefined;
-        fn fuzz_minify(_: void, smith: *std.testing.Smith) !void {
-            const in_len = smith.slice(&input);
-            const out_len = smith.slice(&output);
-            _ = minify(input[0..in_len], output[0..out_len]) catch {};
-        }
-    };
-    try std.testing.fuzz({}, t.fuzz_minify, .{});
 }
 
 test "another large one" {
