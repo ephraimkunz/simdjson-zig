@@ -594,6 +594,21 @@ test "fuzz parseFromSlice" {
         fn fuzz_parseFromSlice(_: void, smith: *std.testing.Smith) !void {
             const len = smith.slice(&data);
             _ = parseFromSlice(u8, std.testing.allocator, data[0..len], .{}) catch {};
+            _ = parseFromSlice(bool, std.testing.allocator, data[0..len], .{}) catch {};
+            _ = parseFromSlice([]u8, std.testing.allocator, data[0..len], .{}) catch {};
+            _ = parseFromSlice([][]u8, std.testing.allocator, data[0..len], .{}) catch {};
+
+            const S = struct {
+                @"test": [15]T,
+                const T = struct {
+                    f1: F,
+                    f2: F,
+                    const F = struct { size: ?i16 };
+                };
+            };
+            _ = parseFromSlice(S, std.testing.allocator, data[0..len], .{}) catch {};
+
+            _ = parseFromSlice(union(enum) { a: u32, f: f64, l: bool }, std.testing.allocator, data[0..len], .{}) catch {};
         }
     };
     try std.testing.fuzz({}, t.fuzz_parseFromSlice, .{});
