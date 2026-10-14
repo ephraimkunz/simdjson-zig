@@ -39,28 +39,153 @@ pub const Error = error{
     Unknown,
 };
 
+const Token = std.json.Token;
+const TokenType = std.json.TokenType;
+const JSON_VALUE_MASK: u64 = 0x00FFFFFFFFFFFFFF;
+
+pub const TapeTokenSource = struct {
+    tape: Tape,
+    pos: usize = 1, // Skip the first r entry.
+    gpa: std.mem.Allocator,
+    pub const NextError = error{UnknownTapeEntry} || std.mem.Allocator.Error;
+    pub const PeekError = error{UnknownTapeEntry};
+    pub const SkipError = error{};
+    pub const AllocError = NextError;
+
+    pub fn peekNextTokenType(self: *TapeTokenSource) TapeTokenSource.PeekError!TokenType {
+        const val = self.tape.tape[self.pos];
+        switch (val >> 56) {
+            'n' => return TokenType.null,
+            't' => return TokenType.true,
+            'f' => return TokenType.false,
+            '[' => return TokenType.array_begin,
+            ']' => return TokenType.array_end,
+            '{' => return TokenType.object_begin,
+            '}' => return TokenType.object_end,
+            'r' => return TokenType.end_of_document,
+            '"' => return TokenType.string,
+            'l', 'u', 'd' => return TokenType.number,
+            else => return PeekError.UnknownTapeEntry,
+        }
+    }
+
+    pub fn skipValue(self: *TapeTokenSource) TapeTokenSource.SkipError!void {
+        const val = self.tape.tape[self.pos];
+        self.pos += 1;
+
+        switch (val >> 56) {
+            'l', 'u', 'd' => self.pos += 1,
+            '[', '{' => {
+                const x = val & 0x00000000ffffffff;
+                self.pos = x;
+            },
+            else => {},
+        }
+
+        return {};
+    }
+
+    pub fn next(self: *TapeTokenSource) TapeTokenSource.NextError!std.json.Token {
+        return self.next_internal(self.gpa, .alloc_if_needed);
+    }
+
+    /// https://ziglang.org/documentation/master/std/#std.json.Scanner.Token
+    pub fn nextAllocMax(self: *TapeTokenSource, allocator: std.mem.Allocator, when: std.json.AllocWhen, max_value_len: usize) TapeTokenSource.AllocError!Token {
+        _ = max_value_len;
+        return self.next_internal(allocator, when);
+    }
+
+    pub fn deinit(self: *TapeTokenSource) void {
+        _ = self;
+    }
+
+    fn next_internal(
+        self: *TapeTokenSource,
+        allocator: std.mem.Allocator,
+        when: std.json.AllocWhen,
+    ) TapeTokenSource.NextError!std.json.Token {
+        if (self.pos >= self.tape.tape.len) {
+            return Token.end_of_document;
+        }
+        const val = self.tape.tape[self.pos];
+        self.pos += 1;
+        switch (val >> 56) {
+            'n' => return Token.null,
+            't' => return Token.true,
+            'f' => return Token.false,
+            '[' => return Token.array_begin,
+            ']' => return Token.array_end,
+            '{' => return Token.object_begin,
+            '}' => return Token.object_end,
+            'r' => return Token.end_of_document,
+            '"' => {
+                const index = JSON_VALUE_MASK & val;
+                const len = std.mem.readInt(u32, self.tape.string_buf[index .. index + 4][0..4], .little);
+                const s = self.tape.string_buf[index + 4 .. index + 4 + len];
+
+                switch (when) {
+                    .alloc_always => return Token{ .allocated_string = try allocator.dupe(u8, s) },
+                    .alloc_if_needed => return Token{ .string = s },
+                }
+            },
+            'l' => {
+                // Any way we can get around always allocating here? I don't think it meets the contract for next().
+                const num: i64 = @bitCast(self.tape.tape[self.pos]);
+                const num_str = try allocator.print("{}", .{num});
+                const result = Token{ .allocated_number = num_str };
+                self.pos += 1;
+                return result;
+            },
+            'u' => {
+                // Any way we can get around always allocating here? I don't think it meets the contract for next().
+                const num: u64 = @bitCast(self.tape.tape[self.pos]);
+                const num_str = try allocator.print("{}", .{num});
+                const result = Token{ .allocated_number = num_str };
+                self.pos += 1;
+                return result;
+            },
+            'd' => {
+                // Any way we can get around always allocating here? I don't think it meets the contract for next().
+                const num: f64 = @bitCast(self.tape.tape[self.pos]);
+                const num_str = try allocator.print("{}", .{num});
+                const result = Token{ .allocated_number = num_str };
+                self.pos += 1;
+                return result;
+            },
+            else => return NextError.UnknownTapeEntry,
+        }
+        unreachable;
+    }
+};
+
 // Matches std.json.parseFromSlice exactly as it's a drop-in replacement
 pub fn parseFromSlice(
     comptime T: type,
     allocator: std.mem.Allocator,
     s: []const u8,
     options: std.json.ParseOptions,
-) std.json.ParseError(std.json.Scanner)!std.json.Parsed(T) {
-    _ = allocator;
-    _ = options;
+) std.json.ParseError(TapeTokenSource)!std.json.Parsed(T) {
     const parser = sj.sj_parser_new();
     defer sj.sj_parser_free(parser);
 
     check(sj.sj_parser_parse(parser, s.ptr, s.len)) catch |e| {
-        std.debug.print("{}\n", .{e});
-        return std.json.ParseFromValueError.InvalidCharacter;
+        switch (e) {
+            Error.TapeError => return std.json.ParseFromValueError.UnexpectedToken,
+            else => unreachable,
+        }
     };
     const c_tape = sj.sj_parser_get_tape_view(parser);
     const tape = Tape.init(c_tape);
 
-    std.debug.print("{d}\n", .{tape.tape.len});
+    var tapeTokenSource = TapeTokenSource{ .tape = tape, .gpa = allocator };
+    defer tapeTokenSource.deinit();
 
-    return std.json.ParseFromValueError.DuplicateField;
+    return std.json.parseFromTokenSource(
+        T,
+        allocator,
+        &tapeTokenSource,
+        options,
+    );
 }
 
 pub fn minify(str: []const u8, out_buf: []u8) Error!usize {
@@ -167,13 +292,137 @@ fn check(code: c_int) Error!void {
     };
 }
 
-test parseFromSlice {
+test "parseFromSlice fails" {
     const source =
         \\ { "this is a test"  :
         \\ "value"        }
     ;
     const result = parseFromSlice(u32, std.testing.allocator, source, .{});
-    try std.testing.expectError(std.json.ParseFromValueError.DuplicateField, result);
+    try std.testing.expectError(std.json.ParseFromValueError.UnexpectedToken, result);
+
+    const stdlib_result = std.json.parseFromSlice(u32, std.testing.allocator, source, .{});
+    try std.testing.expectError(std.json.ParseFromValueError.UnexpectedToken, stdlib_result);
+}
+
+test "parseFromSlice fails 2" {
+    const source =
+        \\ { "this is a test"  :
+        \\ value        }
+    ;
+    const result = parseFromSlice(u32, std.testing.allocator, source, .{});
+    try std.testing.expectError(std.json.ParseFromValueError.UnexpectedToken, result);
+
+    const stdlib_result = std.json.parseFromSlice(u32, std.testing.allocator, source, .{});
+    try std.testing.expectError(std.json.ParseFromValueError.UnexpectedToken, stdlib_result);
+}
+
+test "parseFromSlice union" {
+    const source = "{\"cat\": -3}";
+    const U = union(enum) { dog: u32, cat: i5 };
+    const result = try parseFromSlice(U, std.testing.allocator, source, .{});
+    defer result.deinit();
+    try std.testing.expectEqual(U{ .cat = -3 }, result.value);
+}
+
+test "parseFromSlice unknown field" {
+    const source = "{\"dinner\": \"spam\", \"lunch\": \"pbj\"}";
+
+    const S = struct { dinner: []const u8 };
+    const result = parseFromSlice(S, std.testing.allocator, source, .{});
+    try std.testing.expectError(std.json.ParseFromValueError.UnknownField, result);
+}
+
+test "parseFromSlice ignores unknown field" {
+    const source = "{\"dinner\": \"spam\", \"lunch\": \"pbj\"}";
+
+    const S = struct { dinner: []const u8 };
+    const result = try parseFromSlice(S, std.testing.allocator, source, .{ .ignore_unknown_fields = true });
+    defer result.deinit();
+    try std.testing.expectEqualSlices(u8, "spam", result.value.dinner);
+}
+
+test "parseFromSlice positive number" {
+    const source = "5";
+    const result = try parseFromSlice(u32, std.testing.allocator, source, .{});
+    defer result.deinit();
+    try std.testing.expectEqual(5, result.value);
+}
+
+test "parseFromSlice negative number" {
+    const source = "-5";
+    const result = try parseFromSlice(i32, std.testing.allocator, source, .{});
+    defer result.deinit();
+    try std.testing.expectEqual(-5, result.value);
+}
+
+test "parseFromSlice float number" {
+    const source = "-5.64";
+    const result = try parseFromSlice(f64, std.testing.allocator, source, .{});
+    defer result.deinit();
+    try std.testing.expectEqual(-5.64, result.value);
+}
+
+test "parseFromSlice array" {
+    const source = "[1, 2, 3, 4, 5]";
+    const result = try parseFromSlice([]u8, std.testing.allocator, source, .{});
+    defer result.deinit();
+    try std.testing.expectEqualSlices(u8, &.{ 1, 2, 3, 4, 5 }, result.value);
+}
+
+test "parseFromSlice struct" {
+    const source =
+        \\ { "dinner"  :
+        \\ "food"        }
+    ;
+
+    const S = struct { dinner: []const u8 };
+    const result = try parseFromSlice(S, std.testing.allocator, source, .{});
+    defer result.deinit();
+    try std.testing.expectEqualSlices(u8, "food", result.value.dinner);
+}
+
+test "parseFromSlice larger" {
+    const source =
+        \\ {
+        \\ "string_test": "Hello, World! 👋 \t \n \u0041",
+        \\ "number_test": {
+        \\ "integer": 42,
+        \\ "negative": -100,
+        \\ "floating_point": 3.14159,
+        \\ "scientific_notation": 6.022e23,
+        \\"negative_exponent": 1e-5
+        \\},
+        \\"boolean_test": {
+        \\ "true_value": true,
+        \\"false_value": false
+        \\},
+        \\"null_test": null,
+        \\"array_test": [
+        \\ "first_element",
+        \\123,
+        \\true,
+        \\null,
+        \\[
+        \\ "nested_array_level_2",
+        \\[
+        \\ "nested_array_level_3"
+        \\]
+        \\]
+        \\],
+        \\"empty_structures": {
+        \\ "empty_object": {},
+        \\"empty_array": [5]
+        \\}
+        \\}
+    ;
+
+    const S = struct {
+        empty_structures: N,
+        const N = struct { empty_array: []const u8 };
+    };
+    const result = try parseFromSlice(S, std.testing.allocator, source, .{ .ignore_unknown_fields = true });
+    defer result.deinit();
+    try std.testing.expectEqualSlices(u8, &.{5}, result.value.empty_structures.empty_array);
 }
 
 test minify {
