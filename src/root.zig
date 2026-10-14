@@ -41,16 +41,16 @@ pub const Error = error{
 
 const Token = std.json.Token;
 const TokenType = std.json.TokenType;
-const JSON_VALUE_MASK: u64 = 0x00FFFFFFFFFFFFFF;
+const JSON_VALUE_MASK: u64 = 0x00FF_FFFF_FFFF_FFFF;
 
 pub const TapeTokenSource = struct {
     tape: Tape,
     pos: usize = 1, // Skip the first r entry.
     gpa: std.mem.Allocator,
-    pub const NextError = error{UnknownTapeEntry} || std.mem.Allocator.Error;
-    pub const PeekError = error{UnknownTapeEntry};
+    pub const NextError = AllocError;
+    pub const PeekError = std.json.Scanner.Error;
     pub const SkipError = error{};
-    pub const AllocError = NextError;
+    pub const AllocError = std.mem.Allocator.Error;
 
     pub fn peekNextTokenType(self: *TapeTokenSource) TapeTokenSource.PeekError!TokenType {
         const val = self.tape.tape[self.pos];
@@ -65,7 +65,7 @@ pub const TapeTokenSource = struct {
             'r' => return TokenType.end_of_document,
             '"' => return TokenType.string,
             'l', 'u', 'd' => return TokenType.number,
-            else => return PeekError.UnknownTapeEntry,
+            else => unreachable,
         }
     }
 
@@ -76,7 +76,7 @@ pub const TapeTokenSource = struct {
         switch (val >> 56) {
             'l', 'u', 'd' => self.pos += 1,
             '[', '{' => {
-                const x = val & 0x00000000ffffffff;
+                const x = val & 0x0000_0000_ffff_ffff;
                 self.pos = x;
             },
             else => {},
@@ -152,7 +152,7 @@ pub const TapeTokenSource = struct {
                 self.pos += 1;
                 return result;
             },
-            else => return NextError.UnknownTapeEntry,
+            else => unreachable,
         }
         unreachable;
     }
@@ -170,7 +170,10 @@ pub fn parseFromSlice(
 
     check(sj.sj_parser_parse(parser, s.ptr, s.len)) catch |e| {
         switch (e) {
-            Error.TapeError => return std.json.ParseFromValueError.UnexpectedToken,
+            Error.TapeError, Error.UnclosedString, Error.Empty => return std.json.Scanner.Error.UnexpectedEndOfInput,
+            Error.Utf8Error => return std.json.Scanner.Error.SyntaxError,
+            Error.DepthError => return std.json.ParseFromValueError.UnexpectedToken,
+            Error.BigIntError => return std.json.ParseFromValueError.Overflow,
             else => unreachable,
         }
     };
@@ -180,11 +183,16 @@ pub fn parseFromSlice(
     var tapeTokenSource = TapeTokenSource{ .tape = tape, .gpa = allocator };
     defer tapeTokenSource.deinit();
 
+    // For now, don't allow .allocate_if_needed in the options, as it makes us return a slice to the parser just
+    // freed above.
+    var o = options;
+    o.allocate = null;
+
     return std.json.parseFromTokenSource(
         T,
         allocator,
         &tapeTokenSource,
-        options,
+        o,
     );
 }
 
@@ -310,7 +318,7 @@ test "parseFromSlice fails 2" {
         \\ value        }
     ;
     const result = parseFromSlice(u32, std.testing.allocator, source, .{});
-    try std.testing.expectError(std.json.ParseFromValueError.UnexpectedToken, result);
+    try std.testing.expectError(std.json.Scanner.Error.UnexpectedEndOfInput, result);
 
     const stdlib_result = std.json.parseFromSlice(u32, std.testing.allocator, source, .{});
     try std.testing.expectError(std.json.ParseFromValueError.UnexpectedToken, stdlib_result);
@@ -339,6 +347,16 @@ test "parseFromSlice ignores unknown field" {
     const result = try parseFromSlice(S, std.testing.allocator, source, .{ .ignore_unknown_fields = true });
     defer result.deinit();
     try std.testing.expectEqualSlices(u8, "spam", result.value.dinner);
+}
+
+test "parseFromSlice alloc if needed" {
+    const source = "{\"dinner\": \"spam\", \"lunch\": \"pbj\"}";
+
+    const S = struct { dinner: []const u8, lunch: []const u8 };
+    const result = try parseFromSlice(S, std.testing.allocator, source, .{ .allocate = .alloc_if_needed });
+    defer result.deinit();
+    try std.testing.expectEqualSlices(u8, "spam", result.value.dinner);
+    try std.testing.expectEqualSlices(u8, "pbj", result.value.lunch);
 }
 
 test "parseFromSlice positive number" {
@@ -423,6 +441,101 @@ test "parseFromSlice larger" {
     const result = try parseFromSlice(S, std.testing.allocator, source, .{ .ignore_unknown_fields = true });
     defer result.deinit();
     try std.testing.expectEqualSlices(u8, &.{5}, result.value.empty_structures.empty_array);
+}
+
+test "malformed: empty input" {
+    try std.testing.expectError(std.json.Scanner.Error.UnexpectedEndOfInput, parseFromSlice(u32, std.testing.allocator, "", .{}));
+    try std.testing.expectError(std.json.Scanner.Error.UnexpectedEndOfInput, std.json.parseFromSlice(u32, std.testing.allocator, "", .{}));
+}
+
+test "malformed: truncated array" {
+    try std.testing.expectError(std.json.Scanner.Error.UnexpectedEndOfInput, parseFromSlice([]u32, std.testing.allocator, "[1,", .{}));
+    try std.testing.expectError(std.json.Scanner.Error.UnexpectedEndOfInput, std.json.parseFromSlice([]u32, std.testing.allocator, "[1,", .{}));
+}
+
+test "malformed: unclosed string" {
+    try std.testing.expectError(std.json.Scanner.Error.UnexpectedEndOfInput, parseFromSlice([]const u8, std.testing.allocator, "\"abc", .{}));
+    try std.testing.expectError(std.json.Scanner.Error.UnexpectedEndOfInput, std.json.parseFromSlice([]const u8, std.testing.allocator, "\"abc", .{}));
+}
+
+test "malformed: invalid utf-8 inside string" {
+    try std.testing.expectError(std.json.Scanner.Error.SyntaxError, parseFromSlice([]const u8, std.testing.allocator, "\"\xff\"", .{}));
+    try std.testing.expectError(std.json.Scanner.Error.SyntaxError, std.json.parseFromSlice([]const u8, std.testing.allocator, "\"\xff\"", .{}));
+}
+
+test "malformed: bare invalid byte" {
+    try std.testing.expectError(std.json.Scanner.Error.SyntaxError, parseFromSlice(u32, std.testing.allocator, "\xff", .{}));
+    try std.testing.expectError(std.json.Scanner.Error.SyntaxError, std.json.parseFromSlice(u32, std.testing.allocator, "\xff", .{}));
+}
+
+test "malformed: balanced nesting beyond depth limit" {
+    const depth = 2000;
+    const buf = try std.testing.allocator.alloc(u8, depth * 2);
+    defer std.testing.allocator.free(buf);
+    @memset(buf[0..depth], '[');
+    @memset(buf[depth..], ']');
+    try std.testing.expectError(std.json.ParseFromValueError.UnexpectedToken, parseFromSlice(u32, std.testing.allocator, buf, .{}));
+    try std.testing.expectError(std.json.ParseFromValueError.UnexpectedToken, std.json.parseFromSlice(u32, std.testing.allocator, buf, .{}));
+}
+
+test "malformed: unbalanced nesting beyond depth limit" {
+    const depth = 2000;
+    const buf = try std.testing.allocator.alloc(u8, depth);
+    defer std.testing.allocator.free(buf);
+    @memset(buf, '[');
+    try std.testing.expectError(std.json.Scanner.Error.UnexpectedEndOfInput, parseFromSlice(u32, std.testing.allocator, buf, .{}));
+    try std.testing.expectError(std.json.ParseFromValueError.UnexpectedToken, std.json.parseFromSlice(u32, std.testing.allocator, buf, .{}));
+}
+
+test "malformed: integer beyond u64 range" {
+    try std.testing.expectError(std.json.ParseFromValueError.Overflow, parseFromSlice(u64, std.testing.allocator, "99999999999999999999", .{}));
+    try std.testing.expectError(std.json.ParseFromValueError.Overflow, std.json.parseFromSlice(u64, std.testing.allocator, "99999999999999999999", .{}));
+}
+
+const Person = struct {
+    name: []const u8,
+    city: []const u8,
+    tags: []const []const u8,
+};
+
+test "alloc_if_needed: result is independent of the input slice" {
+    const input = try std.testing.allocator.dupe(u8, "{\"name\":\"n\",\"city\":\"c\",\"tags\":[\"t\"]}");
+    const parsed = try parseFromSlice(Person, std.testing.allocator, input, .{
+        .allocate = .alloc_if_needed,
+    });
+    defer parsed.deinit();
+
+    @memset(input, 0xAA);
+    std.testing.allocator.free(input);
+
+    try std.testing.expectEqualStrings("n", parsed.value.name);
+    try std.testing.expectEqualStrings("c", parsed.value.city);
+    try std.testing.expectEqualStrings("t", parsed.value.tags[0]);
+}
+
+test "alloc_if_needed: repeated parses don't alias each other" {
+    const first_source =
+        \\{"name":"first-document-value","city":"A","tags":[]}
+    ;
+    const second_source =
+        \\{"name":"second-document-val!","city":"B","tags":[]}
+    ;
+
+    const expected_first = try std.json.parseFromSlice(Person, std.testing.allocator, first_source, .{});
+    defer expected_first.deinit();
+    const expected_second = try std.json.parseFromSlice(Person, std.testing.allocator, second_source, .{});
+    defer expected_second.deinit();
+
+    const first = try parseFromSlice(Person, std.testing.allocator, first_source, .{ .allocate = .alloc_if_needed });
+    defer first.deinit();
+
+    const second = try parseFromSlice(Person, std.testing.allocator, second_source, .{ .allocate = .alloc_if_needed });
+    defer second.deinit();
+
+    try std.testing.expectEqualDeep(expected_first.value, first.value);
+    try std.testing.expectEqualDeep(expected_second.value, second.value);
+    try std.testing.expectEqualStrings("first-document-value", first.value.name);
+    try std.testing.expectEqualStrings("second-document-val!", second.value.name);
 }
 
 test minify {
