@@ -8,6 +8,7 @@ pub const validate_utf8 = @import("validateUTF8.zig").validate_utf8;
 const Token = std.json.Token;
 const TokenType = std.json.TokenType;
 
+// https://github.com/simdjson/simdjson/blob/master/doc/tape.md
 pub const TapeTokenSource = struct {
     tape: Tape,
     pos: usize = 1, // Skip the first r entry.
@@ -30,7 +31,7 @@ pub const TapeTokenSource = struct {
             '}' => return TokenType.object_end,
             'r' => return TokenType.end_of_document,
             '"' => return TokenType.string,
-            'l', 'u', 'd' => return TokenType.number,
+            'l', 'u', 'd', 'Z' => return TokenType.number,
             else => unreachable,
         }
     }
@@ -94,6 +95,16 @@ pub const TapeTokenSource = struct {
                     .alloc_if_needed => return Token{ .string = s },
                 }
             },
+            'Z' => {
+                const index = 0x00FF_FFFF_FFFF_FFFF & val;
+                const len = std.mem.readInt(u32, self.tape.string_buf[index .. index + 4][0..4], .little);
+                const s = self.tape.string_buf[index + 4 .. index + 4 + len];
+
+                switch (when) {
+                    .alloc_always => return Token{ .allocated_number = try allocator.dupe(u8, s) },
+                    .alloc_if_needed => return Token{ .number = s },
+                }
+            },
             'l' => {
                 // Any way we can get around always allocating here? I don't think it meets the contract for next().
                 const num: i64 = @bitCast(self.tape.tape[self.pos]);
@@ -139,7 +150,6 @@ pub fn parseFromSlice(
             err.Error.TapeError, err.Error.UnclosedString, err.Error.Empty => return std.json.Scanner.Error.UnexpectedEndOfInput,
             err.Error.Utf8Error => return std.json.Scanner.Error.SyntaxError,
             err.Error.DepthError => return std.json.ParseFromValueError.UnexpectedToken,
-            err.Error.BigIntError => return std.json.ParseFromValueError.Overflow,
             err.Error.UnescapedChars => return std.json.Scanner.Error.SyntaxError,
             else => unreachable,
         }
@@ -367,8 +377,12 @@ test "malformed: unbalanced nesting beyond depth limit" {
 }
 
 test "malformed: integer beyond u64 range" {
-    try std.testing.expectError(std.json.ParseFromValueError.Overflow, parseFromSlice(u64, std.testing.allocator, "99999999999999999999", .{}));
-    try std.testing.expectError(std.json.ParseFromValueError.Overflow, std.json.parseFromSlice(u64, std.testing.allocator, "99999999999999999999", .{}));
+    const val = try parseFromSlice(u128, std.testing.allocator, "99999999999999999999", .{});
+    defer val.deinit();
+    try std.testing.expectEqual(99999999999999999999, val.value);
+    const val2 = try std.json.parseFromSlice(u128, std.testing.allocator, "99999999999999999999", .{});
+    defer val2.deinit();
+    try std.testing.expectEqual(99999999999999999999, val2.value);
 }
 
 const Person = struct {

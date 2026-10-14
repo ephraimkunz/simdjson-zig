@@ -11,7 +11,10 @@ struct sj_parser {
 };
 
 sj_parser *sj_parser_new(void) {
-    return new sj_parser;
+    auto parser = new sj_parser;
+    // We support big ints in the string table.
+    parser->parser.number_as_string(true);
+    return parser;
 }
 
 void sj_parser_free(sj_parser *p) {
