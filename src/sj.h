@@ -17,8 +17,7 @@ typedef struct sj_parser sj_parser;
 typedef struct {
     uint64_t *tape_ptr;
     size_t tape_len;
-    uint8_t *string_buf_ptr;
-    size_t string_buf_len;
+    uint8_t *string_buf_ptr; // We don't store the length, don't need it and it's expensive to calculate.
 } sj_tape;
 
 // Parsing
@@ -26,7 +25,6 @@ sj_parser *sj_parser_new(void);
 void sj_parser_free(sj_parser *p);
 int sj_parser_parse(sj_parser *p, const char *buf, size_t len);
 sj_tape sj_parser_get_tape_view(sj_parser *p);
-void sj_tape_free(sj_tape *t);
 
 // Other utility functions
 int sj_minify(const char *buf, size_t len, char *dst, size_t *dst_len);
