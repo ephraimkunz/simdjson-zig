@@ -148,9 +148,8 @@ pub fn parseFromSlice(
     err.check(sj.sj_parser_parse(parser, s.ptr, s.len)) catch |e| {
         switch (e) {
             err.Error.TapeError, err.Error.UnclosedString, err.Error.Empty => return std.json.Scanner.Error.UnexpectedEndOfInput,
-            err.Error.Utf8Error => return std.json.Scanner.Error.SyntaxError,
+            err.Error.Utf8Error, err.Error.NumberError, err.Error.UnescapedChars => return std.json.Scanner.Error.SyntaxError,
             err.Error.DepthError => return std.json.ParseFromValueError.UnexpectedToken,
-            err.Error.UnescapedChars => return std.json.Scanner.Error.SyntaxError,
             else => unreachable,
         }
     };
@@ -383,6 +382,11 @@ test "malformed: integer beyond u64 range" {
     const val2 = try std.json.parseFromSlice(u128, std.testing.allocator, "99999999999999999999", .{});
     defer val2.deinit();
     try std.testing.expectEqual(99999999999999999999, val2.value);
+}
+
+test "malformed: number error" {
+    try std.testing.expectError(std.json.Scanner.Error.SyntaxError, parseFromSlice(u32, std.testing.allocator, "01234", .{}));
+    try std.testing.expectError(std.json.Scanner.Error.SyntaxError, std.json.parseFromSlice(u32, std.testing.allocator, "01234", .{}));
 }
 
 const Person = struct {
