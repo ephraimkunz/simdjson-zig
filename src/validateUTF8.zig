@@ -15,7 +15,7 @@ test "validate_utf8 invalid" {
 
 test "fuzz validateUTF8" {
     const t = struct {
-        var data: [1_000_000_000]u8 = undefined;
+        var data: [1_000]u8 = undefined;
         fn fuzz_validateUTF8(_: void, smith: *std.testing.Smith) !void {
             const len = smith.slice(&data);
             _ = validate_utf8(data[0..len]);

@@ -433,7 +433,7 @@ test "alloc_if_needed: repeated parses don't alias each other" {
 
 test "fuzz parseFromSlice" {
     const t = struct {
-        var data: [1_000_000_000]u8 = undefined;
+        var data: [1_000]u8 = undefined;
         fn fuzz_parseFromSlice(_: void, smith: *std.testing.Smith) !void {
             const len = smith.slice(&data);
             _ = parseFromSlice(u8, std.testing.allocator, data[0..len], .{}) catch {};

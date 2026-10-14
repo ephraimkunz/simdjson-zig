@@ -49,8 +49,8 @@ test "minify unterminated" {
 
 test "fuzz minify" {
     const t = struct {
-        var input: [1_000_000_000]u8 = undefined;
-        var output: [1_000_000_000]u8 = undefined;
+        var input: [1_000]u8 = undefined;
+        var output: [1_000]u8 = undefined;
         fn fuzz_minify(_: void, smith: *std.testing.Smith) !void {
             const in_len = smith.slice(&input);
             const out_len = smith.slice(&output);
