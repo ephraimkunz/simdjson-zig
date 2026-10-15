@@ -48,7 +48,11 @@ very similar to the JSON APIs in the standard library. This allows us to reuse p
 
 
 **TODO**: benchmark vs yyjson / std.json, expand API:
-* Load many, parse many
-* Finish implementing drop in std.json support
+* Load many?, parse many
+* Finish implementing drop-in std.json support
 * Expose parser (reuse) and parser options (max nesting level (max_depth), max allocations (set_max_capacity))
 * Prettify?
+* Update simdjson readme with a reference.
+* Reviews from Ziglings
+* Test if it's really drop in by adding example programs.
+* Fuzzing and testing.
