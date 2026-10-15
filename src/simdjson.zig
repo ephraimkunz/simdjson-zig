@@ -12,19 +12,20 @@ const TokenType = std.json.TokenType;
 pub const TapeTokenSource = struct {
     tape: Tape,
     pos: usize = 1, // Skip the first r entry.
-    // Used to store stringified numbers returned by reference, since they are already parsed in the tape but
-    // std.json expects them non-parsed.
-    arena: std.heap.ArenaAllocator,
+    // Used to temporarily store stringified numbers returned by reference, since they are already parsed in the tape but
+    // std.json expects them non-parsed. I think 24 is the max for a 64 bit double literal, but go a little big just in case :)
+    // The contract is that .next() can return a slice that will only last until it's called again.
+    scratch: [30]u8 = undefined,
 
     pub const NextError = std.json.Scanner.NextError;
     pub const PeekError = std.json.Scanner.PeekError;
     pub const SkipError = std.json.Scanner.SkipError;
     pub const AllocError = std.json.Scanner.AllocError;
 
-    const NextAllocStrategy = enum {
-        alloc_never, // Actually will alloc internally for numbers, but to the outside world it will appear as a reference.
-        alloc_always,
-        alloc_if_needed,
+    const NextAllocStrategy = union(enum) {
+        alloc_never,
+        alloc_always: std.mem.Allocator,
+        alloc_if_needed: std.mem.Allocator,
     };
 
     pub fn peekNextTokenType(self: *TapeTokenSource) TapeTokenSource.PeekError!TokenType {
@@ -61,26 +62,25 @@ pub const TapeTokenSource = struct {
     }
 
     pub fn next(self: *TapeTokenSource) TapeTokenSource.NextError!std.json.Token {
-        return self.next_internal(self.arena.allocator(), .alloc_never);
+        return self.next_internal(.alloc_never);
     }
 
     /// https://ziglang.org/documentation/master/std/#std.json.Scanner.Token
     pub fn nextAllocMax(self: *TapeTokenSource, allocator: std.mem.Allocator, when: std.json.AllocWhen, max_value_len: usize) !Token {
         _ = max_value_len;
         const nextAlloc: NextAllocStrategy = switch (when) {
-            .alloc_if_needed => .alloc_if_needed,
-            .alloc_always => .alloc_always,
+            .alloc_if_needed => .{ .alloc_if_needed = allocator },
+            .alloc_always => .{ .alloc_always = allocator },
         };
-        return self.next_internal(allocator, nextAlloc);
+        return self.next_internal(nextAlloc);
     }
 
     pub fn deinit(self: *TapeTokenSource) void {
-        self.arena.deinit();
+        _ = self;
     }
 
     fn next_internal(
         self: *TapeTokenSource,
-        allocator: std.mem.Allocator,
         when: NextAllocStrategy,
     ) TapeTokenSource.NextError!std.json.Token {
         if (self.pos >= self.tape.tape.len) {
@@ -103,7 +103,7 @@ pub const TapeTokenSource = struct {
                 const s = self.tape.string_buf[index + 4 .. index + 4 + len];
 
                 return switch (when) {
-                    .alloc_always => Token{ .allocated_string = try allocator.dupe(u8, s) },
+                    .alloc_always => |allocator| Token{ .allocated_string = try allocator.dupe(u8, s) },
                     .alloc_if_needed, .alloc_never => Token{ .string = s },
                 };
             },
@@ -113,36 +113,36 @@ pub const TapeTokenSource = struct {
                 const s = self.tape.string_buf[index + 4 .. index + 4 + len];
 
                 return switch (when) {
-                    .alloc_always => Token{ .allocated_number = try allocator.dupe(u8, s) },
+                    .alloc_always => |allocator| Token{ .allocated_number = try allocator.dupe(u8, s) },
                     .alloc_if_needed, .alloc_never => Token{ .number = s },
                 };
             },
             'l' => {
                 const num: i64 = @bitCast(self.tape.tape[self.pos]);
-                const num_str = try allocator.print("{}", .{num});
+                const num_str = std.mem.print(&self.scratch, "{d}", .{num}) catch unreachable;
                 const result = switch (when) {
-                    .alloc_always, .alloc_if_needed => Token{ .allocated_number = num_str },
-                    .alloc_never => Token{ .number = num_str }, // Secretly allocated on an arena owned internally.
+                    .alloc_always, .alloc_if_needed => |allocator| Token{ .allocated_number = try allocator.dupe(u8, num_str) },
+                    .alloc_never => Token{ .number = num_str },
                 };
                 self.pos += 1;
                 return result;
             },
             'u' => {
                 const num: u64 = @bitCast(self.tape.tape[self.pos]);
-                const num_str = try allocator.print("{}", .{num});
+                const num_str = std.mem.print(&self.scratch, "{d}", .{num}) catch unreachable;
                 const result = switch (when) {
-                    .alloc_always, .alloc_if_needed => Token{ .allocated_number = num_str },
-                    .alloc_never => Token{ .number = num_str }, // Secretly allocated on an arena owned internally.
+                    .alloc_always, .alloc_if_needed => |allocator| Token{ .allocated_number = try allocator.dupe(u8, num_str) },
+                    .alloc_never => Token{ .number = num_str },
                 };
                 self.pos += 1;
                 return result;
             },
             'd' => {
                 const num: f64 = @bitCast(self.tape.tape[self.pos]);
-                const num_str = try allocator.print("{}", .{num});
+                const num_str = std.mem.print(&self.scratch, "{e}", .{num}) catch unreachable;
                 const result = switch (when) {
-                    .alloc_always, .alloc_if_needed => Token{ .allocated_number = num_str },
-                    .alloc_never => return Token{ .number = num_str }, // Secretly allocated on an arena owned internally.
+                    .alloc_always, .alloc_if_needed => |allocator| Token{ .allocated_number = try allocator.dupe(u8, num_str) },
+                    .alloc_never => return Token{ .number = num_str },
                 };
                 self.pos += 1;
                 return result;
@@ -174,7 +174,7 @@ pub fn parseFromSlice(
     const c_tape = sj.sj_parser_get_tape_view(parser);
     const tape = Tape.init(c_tape);
 
-    var tapeTokenSource = TapeTokenSource{ .tape = tape, .arena = .init(allocator) };
+    var tapeTokenSource = TapeTokenSource{ .tape = tape };
     defer tapeTokenSource.deinit();
 
     // For now, don't allow .allocate_if_needed in the options, as it makes us return a slice to the parser just
@@ -442,6 +442,12 @@ test "malformed: incomplete true" {
 test "malformed: incomplete false" {
     try std.testing.expectError(std.json.Scanner.Error.UnexpectedEndOfInput, parseFromSlice(?u32, std.testing.allocator, "fals", .{}));
     try std.testing.expectError(std.json.Scanner.Error.UnexpectedEndOfInput, std.json.parseFromSlice(?u32, std.testing.allocator, "nul", .{}));
+}
+
+test "scientific notation" {
+    const val = try parseFromSlice(f64, std.testing.allocator, "5e37", .{});
+    defer val.deinit();
+    try std.testing.expectEqual(5e37, val.value);
 }
 
 const Person = struct {
