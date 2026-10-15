@@ -166,7 +166,7 @@ pub fn parseFromSlice(
     err.check(sj.sj_parser_parse(parser, s.ptr, s.len)) catch |e| {
         switch (e) {
             err.Error.TapeError, err.Error.UnclosedString, err.Error.Empty, err.Error.NAtomError, err.Error.TAtomError, err.Error.FAtomError => return std.json.Scanner.Error.UnexpectedEndOfInput,
-            err.Error.Utf8Error, err.Error.NumberError, err.Error.UnescapedChars => return std.json.Scanner.Error.SyntaxError,
+            err.Error.Utf8Error, err.Error.NumberError, err.Error.UnescapedChars, err.Error.StringError => return std.json.Scanner.Error.SyntaxError,
             err.Error.DepthError => return std.json.ParseFromValueError.UnexpectedToken,
             else => unreachable,
         }
@@ -372,6 +372,28 @@ test "malformed: invalid utf-8 inside string" {
 test "malformed: bare invalid byte" {
     try std.testing.expectError(std.json.Scanner.Error.SyntaxError, parseFromSlice(u32, std.testing.allocator, "\xff", .{}));
     try std.testing.expectError(std.json.Scanner.Error.SyntaxError, std.json.parseFromSlice(u32, std.testing.allocator, "\xff", .{}));
+}
+
+test "invalid escape -> string error" {
+    const cases = [_][]const u8{
+        "\"\\x\"", // unknown escape
+        "\"\\u12G4\"", // non-hex digit
+        "\"\\u12\"", // too few hex digits
+        "\"\\ud800\"", // lone high surrogate
+        "\"\\ud800\\u0041\"", // high surrogate + non-low surrogate
+    };
+    for (cases) |src| {
+        const result = parseFromSlice([]const u8, std.testing.allocator, src, .{});
+        try std.testing.expectError(std.json.Scanner.Error.SyntaxError, result);
+        const result2 = std.json.parseFromSlice([]const u8, std.testing.allocator, src, .{});
+        try std.testing.expectError(std.json.Scanner.Error.SyntaxError, result2);
+    }
+
+    const input = "{\"\\x\": 1}"; // bad escape in an object key
+    const result = parseFromSlice([]const u8, std.testing.allocator, input, .{});
+    try std.testing.expectError(std.json.Scanner.Error.SyntaxError, result);
+    const result2 = std.json.parseFromSlice([]const u8, std.testing.allocator, input, .{});
+    try std.testing.expectError(std.json.ParseFromValueError.UnexpectedToken, result2);
 }
 
 test "malformed: balanced nesting beyond depth limit" {
