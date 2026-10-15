@@ -55,4 +55,5 @@ very similar to the JSON APIs in the standard library. This allows us to reuse p
 * Update simdjson readme with a reference.
 * Reviews from Ziglings
 * Test if it's really drop in by adding example programs.
-* Fuzzing and testing.
+* Fuzzing and testing, especially with max nesting level and allocations enabled.
+* Benchmarks sections showing speed vs c++ impl direct and std.json 
