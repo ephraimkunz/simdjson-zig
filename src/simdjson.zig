@@ -12,12 +12,20 @@ const TokenType = std.json.TokenType;
 pub const TapeTokenSource = struct {
     tape: Tape,
     pos: usize = 1, // Skip the first r entry.
-    gpa: std.mem.Allocator,
+    // Used to store stringified numbers returned by reference, since they are already parsed in the tape but
+    // std.json expects them non-parsed.
+    arena: std.heap.ArenaAllocator,
 
     pub const NextError = std.json.Scanner.NextError;
     pub const PeekError = std.json.Scanner.PeekError;
     pub const SkipError = std.json.Scanner.SkipError;
     pub const AllocError = std.json.Scanner.AllocError;
+
+    const NextAllocStrategy = enum {
+        alloc_never, // Actually will alloc internally for numbers, but to the outside world it will appear as a reference.
+        alloc_always,
+        alloc_if_needed,
+    };
 
     pub fn peekNextTokenType(self: *TapeTokenSource) TapeTokenSource.PeekError!TokenType {
         const val = self.tape.tape[self.pos];
@@ -53,23 +61,27 @@ pub const TapeTokenSource = struct {
     }
 
     pub fn next(self: *TapeTokenSource) TapeTokenSource.NextError!std.json.Token {
-        return self.next_internal(self.gpa, .alloc_if_needed);
+        return self.next_internal(self.arena.allocator(), .alloc_never);
     }
 
     /// https://ziglang.org/documentation/master/std/#std.json.Scanner.Token
     pub fn nextAllocMax(self: *TapeTokenSource, allocator: std.mem.Allocator, when: std.json.AllocWhen, max_value_len: usize) !Token {
         _ = max_value_len;
-        return self.next_internal(allocator, when);
+        const nextAlloc: NextAllocStrategy = switch (when) {
+            .alloc_if_needed => .alloc_if_needed,
+            .alloc_always => .alloc_always,
+        };
+        return self.next_internal(allocator, nextAlloc);
     }
 
     pub fn deinit(self: *TapeTokenSource) void {
-        _ = self;
+        self.arena.deinit();
     }
 
     fn next_internal(
         self: *TapeTokenSource,
         allocator: std.mem.Allocator,
-        when: std.json.AllocWhen,
+        when: NextAllocStrategy,
     ) TapeTokenSource.NextError!std.json.Token {
         if (self.pos >= self.tape.tape.len) {
             return Token.end_of_document;
@@ -90,42 +102,48 @@ pub const TapeTokenSource = struct {
                 const len = std.mem.readInt(u32, self.tape.string_buf[index .. index + 4][0..4], .little);
                 const s = self.tape.string_buf[index + 4 .. index + 4 + len];
 
-                switch (when) {
-                    .alloc_always => return Token{ .allocated_string = try allocator.dupe(u8, s) },
-                    .alloc_if_needed => return Token{ .string = s },
-                }
+                return switch (when) {
+                    .alloc_always => Token{ .allocated_string = try allocator.dupe(u8, s) },
+                    .alloc_if_needed, .alloc_never => Token{ .string = s },
+                };
             },
             'Z' => {
                 const index = 0x00FF_FFFF_FFFF_FFFF & val;
                 const len = std.mem.readInt(u32, self.tape.string_buf[index .. index + 4][0..4], .little);
                 const s = self.tape.string_buf[index + 4 .. index + 4 + len];
 
-                switch (when) {
-                    .alloc_always => return Token{ .allocated_number = try allocator.dupe(u8, s) },
-                    .alloc_if_needed => return Token{ .number = s },
-                }
+                return switch (when) {
+                    .alloc_always => Token{ .allocated_number = try allocator.dupe(u8, s) },
+                    .alloc_if_needed, .alloc_never => Token{ .number = s },
+                };
             },
             'l' => {
-                // Any way we can get around always allocating here? I don't think it meets the contract for next().
                 const num: i64 = @bitCast(self.tape.tape[self.pos]);
                 const num_str = try allocator.print("{}", .{num});
-                const result = Token{ .allocated_number = num_str };
+                const result = switch (when) {
+                    .alloc_always, .alloc_if_needed => Token{ .allocated_number = num_str },
+                    .alloc_never => Token{ .number = num_str }, // Secretly allocated on an arena owned internally.
+                };
                 self.pos += 1;
                 return result;
             },
             'u' => {
-                // Any way we can get around always allocating here? I don't think it meets the contract for next().
                 const num: u64 = @bitCast(self.tape.tape[self.pos]);
                 const num_str = try allocator.print("{}", .{num});
-                const result = Token{ .allocated_number = num_str };
+                const result = switch (when) {
+                    .alloc_always, .alloc_if_needed => Token{ .allocated_number = num_str },
+                    .alloc_never => Token{ .number = num_str }, // Secretly allocated on an arena owned internally.
+                };
                 self.pos += 1;
                 return result;
             },
             'd' => {
-                // Any way we can get around always allocating here? I don't think it meets the contract for next().
                 const num: f64 = @bitCast(self.tape.tape[self.pos]);
                 const num_str = try allocator.print("{}", .{num});
-                const result = Token{ .allocated_number = num_str };
+                const result = switch (when) {
+                    .alloc_always, .alloc_if_needed => Token{ .allocated_number = num_str },
+                    .alloc_never => return Token{ .number = num_str }, // Secretly allocated on an arena owned internally.
+                };
                 self.pos += 1;
                 return result;
             },
@@ -147,7 +165,7 @@ pub fn parseFromSlice(
 
     err.check(sj.sj_parser_parse(parser, s.ptr, s.len)) catch |e| {
         switch (e) {
-            err.Error.TapeError, err.Error.UnclosedString, err.Error.Empty => return std.json.Scanner.Error.UnexpectedEndOfInput,
+            err.Error.TapeError, err.Error.UnclosedString, err.Error.Empty, err.Error.NAtomError, err.Error.TAtomError, err.Error.FAtomError => return std.json.Scanner.Error.UnexpectedEndOfInput,
             err.Error.Utf8Error, err.Error.NumberError, err.Error.UnescapedChars => return std.json.Scanner.Error.SyntaxError,
             err.Error.DepthError => return std.json.ParseFromValueError.UnexpectedToken,
             else => unreachable,
@@ -156,13 +174,13 @@ pub fn parseFromSlice(
     const c_tape = sj.sj_parser_get_tape_view(parser);
     const tape = Tape.init(c_tape);
 
-    var tapeTokenSource = TapeTokenSource{ .tape = tape, .gpa = allocator };
+    var tapeTokenSource = TapeTokenSource{ .tape = tape, .arena = .init(allocator) };
     defer tapeTokenSource.deinit();
 
     // For now, don't allow .allocate_if_needed in the options, as it makes us return a slice to the parser just
     // freed above.
     var o = options;
-    o.allocate = null;
+    o.allocate = .alloc_always;
 
     return std.json.parseFromTokenSource(
         T,
@@ -389,6 +407,21 @@ test "malformed: number error" {
     try std.testing.expectError(std.json.Scanner.Error.SyntaxError, std.json.parseFromSlice(u32, std.testing.allocator, "01234", .{}));
 }
 
+test "malformed: incomplete null" {
+    try std.testing.expectError(std.json.Scanner.Error.UnexpectedEndOfInput, parseFromSlice(?u32, std.testing.allocator, "nul", .{}));
+    try std.testing.expectError(std.json.Scanner.Error.UnexpectedEndOfInput, std.json.parseFromSlice(?u32, std.testing.allocator, "nul", .{}));
+}
+
+test "malformed: incomplete true" {
+    try std.testing.expectError(std.json.Scanner.Error.UnexpectedEndOfInput, parseFromSlice(?u32, std.testing.allocator, "tru", .{}));
+    try std.testing.expectError(std.json.Scanner.Error.UnexpectedEndOfInput, std.json.parseFromSlice(?u32, std.testing.allocator, "nul", .{}));
+}
+
+test "malformed: incomplete false" {
+    try std.testing.expectError(std.json.Scanner.Error.UnexpectedEndOfInput, parseFromSlice(?u32, std.testing.allocator, "fals", .{}));
+    try std.testing.expectError(std.json.Scanner.Error.UnexpectedEndOfInput, std.json.parseFromSlice(?u32, std.testing.allocator, "nul", .{}));
+}
+
 const Person = struct {
     name: []const u8,
     city: []const u8,
@@ -440,10 +473,18 @@ test "fuzz parseFromSlice" {
         var data: [1_000]u8 = undefined;
         fn fuzz_parseFromSlice(_: void, smith: *std.testing.Smith) !void {
             const len = smith.slice(&data);
-            _ = parseFromSlice(u8, std.testing.allocator, data[0..len], .{}) catch {};
-            _ = parseFromSlice(bool, std.testing.allocator, data[0..len], .{}) catch {};
-            _ = parseFromSlice([]u8, std.testing.allocator, data[0..len], .{}) catch {};
-            _ = parseFromSlice([][]u8, std.testing.allocator, data[0..len], .{}) catch {};
+            if (parseFromSlice(u8, std.testing.allocator, data[0..len], .{})) |p| {
+                defer p.deinit();
+            } else |_| {}
+            if (parseFromSlice(bool, std.testing.allocator, data[0..len], .{})) |p| {
+                defer p.deinit();
+            } else |_| {}
+            if (parseFromSlice([]u8, std.testing.allocator, data[0..len], .{})) |p| {
+                defer p.deinit();
+            } else |_| {}
+            if (parseFromSlice([][]u8, std.testing.allocator, data[0..len], .{})) |p| {
+                defer p.deinit();
+            } else |_| {}
 
             const S = struct {
                 @"test": [15]T,
@@ -453,9 +494,13 @@ test "fuzz parseFromSlice" {
                     const F = struct { size: ?i16 };
                 };
             };
-            _ = parseFromSlice(S, std.testing.allocator, data[0..len], .{}) catch {};
+            if (parseFromSlice(S, std.testing.allocator, data[0..len], .{})) |p| {
+                defer p.deinit();
+            } else |_| {}
 
-            _ = parseFromSlice(union(enum) { a: u32, f: f64, l: bool }, std.testing.allocator, data[0..len], .{}) catch {};
+            if (parseFromSlice(union(enum) { a: u32, f: f64, l: bool }, std.testing.allocator, data[0..len], .{})) |p| {
+                defer p.deinit();
+            } else |_| {}
         }
     };
     try std.testing.fuzz({}, t.fuzz_parseFromSlice, .{});
