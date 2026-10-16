@@ -164,7 +164,7 @@ pub fn build(b: *std.Build) void {
     // Docs are generated from a compile step, so make a throwaway library
     // around the public module. Nothing here is installed except the docs.
     const docs_lib = b.addLibrary(.{
-        .name = "simdjson_zig",
+        .name = "docs",
         .root_module = mod,
     });
 
