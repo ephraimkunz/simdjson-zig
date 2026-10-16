@@ -335,3 +335,10 @@ test "max_alloc_len f64" {
 
     try std.testing.expectError(std.json.Scanner.AllocError.ValueTooLong, scanner.nextAllocMax(std.testing.allocator, .alloc_always, 4));
 }
+
+test "inner parse" {
+    var scanner = TapeTokenSource.init("1234");
+    defer scanner.deinit();
+    const r = try (std.json.innerParse(u32, std.testing.allocator, &scanner, .{ .allocate = .alloc_always, .max_value_len = 15 }));
+    try std.testing.expectEqual(1234, r);
+}

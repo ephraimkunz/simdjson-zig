@@ -59,11 +59,11 @@ very similar to the JSON APIs in the standard library. This allows us to reuse p
 * Load many?, parse many
 * Finish implementing drop-in std.json support
 * Expose parser (reuse) and parser options (max nesting level (max_depth), max allocations (set_max_capacity))
-* Prettify?
+* Prettify? write out in general?
 * Update simdjson readme with a reference.
 * Reviews from Ziggit.
 * Test if it's really drop in by adding example programs.
 * Fuzzing and testing, especially with max nesting level and allocations enabled.
 * Benchmarks sections showing speed vs c++ impl direct and std.json 
-* Use max_value_len
 * A tape to std.json.Value converter, and a comptime struct decoder that reads i64/u64/f64 straight from the tape?
+* Validate JSON?
