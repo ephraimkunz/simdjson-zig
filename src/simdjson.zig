@@ -10,17 +10,58 @@ const TokenType = std.json.TokenType;
 
 // https://github.com/simdjson/simdjson/blob/master/doc/tape.md
 pub const TapeTokenSource = struct {
-    tape: Tape,
+    s: []const u8,
     pos: usize = 1, // Skip the first r entry.
     // Used to temporarily store stringified numbers returned by reference, since they are already parsed in the tape but
     // std.json expects them non-parsed. I think 24 is the max for a 64 bit double literal, but go a little big just in case :)
     // The contract is that .next() can return a slice that will only last until it's called again.
     scratch: [30]u8 = undefined,
 
+    // Built once on demand, cached for future use until deinit.
+    cached_tape: ?Tape = null,
+    cached_parser: ?*sj.sj_parser = null,
+
     pub const NextError = std.json.Scanner.NextError;
     pub const PeekError = std.json.Scanner.PeekError;
     pub const SkipError = std.json.Scanner.SkipError;
     pub const AllocError = std.json.Scanner.AllocError;
+
+    pub fn init(s: []const u8) TapeTokenSource {
+        return .{ .s = s };
+    }
+
+    fn tape(self: *TapeTokenSource) std.json.Scanner.Error!Tape {
+        return self.cached_tape orelse self.parse_and_cache_tape();
+    }
+
+    fn parse_and_cache_tape(self: *TapeTokenSource) std.json.Scanner.Error!Tape {
+        const parser = sj.sj_parser_new();
+        self.cached_parser = parser;
+
+        // Ideally we'd like to return a richer error set here but we're limited by the minimal
+        // error set of all the places tape() is called, since we want to do this parsing on demand.
+        err.check(sj.sj_parser_parse(parser, self.s.ptr, self.s.len)) catch |e| {
+            switch (e) {
+                err.Error.TapeError, err.Error.UnclosedString, err.Error.Empty, err.Error.NAtomError, err.Error.TAtomError, err.Error.FAtomError => return std.json.Scanner.Error.UnexpectedEndOfInput,
+                err.Error.Utf8Error, err.Error.NumberError, err.Error.UnescapedChars, err.Error.StringError, err.Error.DepthError => return std.json.Scanner.Error.SyntaxError,
+                else => unreachable,
+            }
+        };
+        const c_tape = sj.sj_parser_get_tape_view(parser);
+        const t = Tape.init(c_tape);
+        self.cached_tape = t;
+
+        return t;
+    }
+
+    const Tape = struct {
+        tape: []u64,
+        string_buf: [*]u8,
+
+        fn init(c_tape: sj.sj_tape) Tape {
+            return .{ .tape = c_tape.tape_ptr[0..c_tape.tape_len], .string_buf = c_tape.string_buf_ptr };
+        }
+    };
 
     const NextAllocStrategy = union(enum) {
         alloc_never,
@@ -29,7 +70,13 @@ pub const TapeTokenSource = struct {
     };
 
     pub fn peekNextTokenType(self: *TapeTokenSource) TapeTokenSource.PeekError!TokenType {
-        const val = self.tape.tape[self.pos];
+        const t = try self.tape();
+        if (self.pos >= t.tape.len) {
+            // Matching what next() returns.
+            return TokenType.end_of_document;
+        }
+
+        const val = t.tape[self.pos];
         switch (val >> 56) {
             'n' => return TokenType.null,
             't' => return TokenType.true,
@@ -46,7 +93,12 @@ pub const TapeTokenSource = struct {
     }
 
     pub fn skipValue(self: *TapeTokenSource) TapeTokenSource.SkipError!void {
-        const val = self.tape.tape[self.pos];
+        const t = try self.tape();
+        if (self.pos >= t.tape.len) {
+            return TapeTokenSource.SkipError.UnexpectedEndOfInput;
+        }
+
+        const val = t.tape[self.pos];
         self.pos += 1;
 
         switch (val >> 56) {
@@ -76,17 +128,20 @@ pub const TapeTokenSource = struct {
     }
 
     pub fn deinit(self: *TapeTokenSource) void {
-        _ = self;
+        if (self.cached_parser) |parser| {
+            sj.sj_parser_free(parser);
+        }
     }
 
     fn next_internal(
         self: *TapeTokenSource,
         when: NextAllocStrategy,
     ) TapeTokenSource.NextError!std.json.Token {
-        if (self.pos >= self.tape.tape.len) {
+        const t = try self.tape();
+        if (self.pos >= t.tape.len) {
             return Token.end_of_document;
         }
-        const val = self.tape.tape[self.pos];
+        const val = t.tape[self.pos];
         self.pos += 1;
         switch (val >> 56) {
             'n' => return Token.null,
@@ -99,8 +154,8 @@ pub const TapeTokenSource = struct {
             'r' => return Token.end_of_document,
             '"' => {
                 const index = 0x00FF_FFFF_FFFF_FFFF & val;
-                const len = std.mem.readInt(u32, self.tape.string_buf[index .. index + 4][0..4], .little);
-                const s = self.tape.string_buf[index + 4 .. index + 4 + len];
+                const len = std.mem.readInt(u32, t.string_buf[index .. index + 4][0..4], .little);
+                const s = t.string_buf[index + 4 .. index + 4 + len];
 
                 return switch (when) {
                     .alloc_always => |allocator| Token{ .allocated_string = try allocator.dupe(u8, s) },
@@ -109,8 +164,8 @@ pub const TapeTokenSource = struct {
             },
             'Z' => {
                 const index = 0x00FF_FFFF_FFFF_FFFF & val;
-                const len = std.mem.readInt(u32, self.tape.string_buf[index .. index + 4][0..4], .little);
-                const s = self.tape.string_buf[index + 4 .. index + 4 + len];
+                const len = std.mem.readInt(u32, t.string_buf[index .. index + 4][0..4], .little);
+                const s = t.string_buf[index + 4 .. index + 4 + len];
 
                 return switch (when) {
                     .alloc_always => |allocator| Token{ .allocated_number = try allocator.dupe(u8, s) },
@@ -118,7 +173,7 @@ pub const TapeTokenSource = struct {
                 };
             },
             'l' => {
-                const num: i64 = @bitCast(self.tape.tape[self.pos]);
+                const num: i64 = @bitCast(t.tape[self.pos]);
                 const num_str = std.mem.print(&self.scratch, "{d}", .{num}) catch unreachable;
                 const result = switch (when) {
                     .alloc_always, .alloc_if_needed => |allocator| Token{ .allocated_number = try allocator.dupe(u8, num_str) },
@@ -128,7 +183,7 @@ pub const TapeTokenSource = struct {
                 return result;
             },
             'u' => {
-                const num: u64 = @bitCast(self.tape.tape[self.pos]);
+                const num: u64 = @bitCast(t.tape[self.pos]);
                 const num_str = std.mem.print(&self.scratch, "{d}", .{num}) catch unreachable;
                 const result = switch (when) {
                     .alloc_always, .alloc_if_needed => |allocator| Token{ .allocated_number = try allocator.dupe(u8, num_str) },
@@ -138,11 +193,11 @@ pub const TapeTokenSource = struct {
                 return result;
             },
             'd' => {
-                const num: f64 = @bitCast(self.tape.tape[self.pos]);
+                const num: f64 = @bitCast(t.tape[self.pos]);
                 const num_str = std.mem.print(&self.scratch, "{e}", .{num}) catch unreachable;
                 const result = switch (when) {
                     .alloc_always, .alloc_if_needed => |allocator| Token{ .allocated_number = try allocator.dupe(u8, num_str) },
-                    .alloc_never => return Token{ .number = num_str },
+                    .alloc_never => Token{ .number = num_str },
                 };
                 self.pos += 1;
                 return result;
@@ -153,32 +208,18 @@ pub const TapeTokenSource = struct {
     }
 };
 
-// Matches std.json.parseFromSlice exactly as it's a drop-in replacement
+// Matches the std.json.parseFromSlice signature exactly as it's a drop-in replacement.
 pub fn parseFromSlice(
     comptime T: type,
     allocator: std.mem.Allocator,
     s: []const u8,
     options: std.json.ParseOptions,
 ) std.json.ParseError(std.json.Scanner)!std.json.Parsed(T) {
-    const parser = sj.sj_parser_new();
-    defer sj.sj_parser_free(parser);
-
-    err.check(sj.sj_parser_parse(parser, s.ptr, s.len)) catch |e| {
-        switch (e) {
-            err.Error.TapeError, err.Error.UnclosedString, err.Error.Empty, err.Error.NAtomError, err.Error.TAtomError, err.Error.FAtomError => return std.json.Scanner.Error.UnexpectedEndOfInput,
-            err.Error.Utf8Error, err.Error.NumberError, err.Error.UnescapedChars, err.Error.StringError => return std.json.Scanner.Error.SyntaxError,
-            err.Error.DepthError => return std.json.ParseFromValueError.UnexpectedToken,
-            else => unreachable,
-        }
-    };
-    const c_tape = sj.sj_parser_get_tape_view(parser);
-    const tape = Tape.init(c_tape);
-
-    var tapeTokenSource = TapeTokenSource{ .tape = tape };
+    var tapeTokenSource = TapeTokenSource.init(s);
     defer tapeTokenSource.deinit();
 
-    // For now, don't allow .allocate_if_needed in the options, as it makes us return a slice to the parser just
-    // freed above.
+    // For now, don't allow .alloc_if_needed in the options, as it makes us return a slice to the parser just
+    // freed above in tapeTokenSource.deinit.
     var o = options;
     o.allocate = .alloc_always;
 
@@ -190,14 +231,19 @@ pub fn parseFromSlice(
     );
 }
 
-const Tape = struct {
-    tape: []u64,
-    string_buf: [*]u8,
-
-    fn init(c_tape: sj.sj_tape) Tape {
-        return .{ .tape = c_tape.tape_ptr[0..c_tape.tape_len], .string_buf = c_tape.string_buf_ptr };
-    }
-};
+test TapeTokenSource {
+    var scanner = TapeTokenSource.init("{\"foo\": [123.0, 456, -154]}\n");
+    defer scanner.deinit();
+    try std.testing.expectEqual(Token.object_begin, try scanner.next());
+    try std.testing.expectEqualSlices(u8, "foo", (try scanner.next()).string);
+    try std.testing.expectEqual(Token.array_begin, try scanner.next());
+    try std.testing.expectEqualSlices(u8, "1.23e2", (try scanner.next()).number);
+    try std.testing.expectEqualSlices(u8, "456", (try scanner.next()).number);
+    try std.testing.expectEqualSlices(u8, "-154", (try scanner.next()).number);
+    try std.testing.expectEqual(Token.array_end, try scanner.next());
+    try std.testing.expectEqual(Token.object_end, try scanner.next());
+    try std.testing.expectEqual(Token.end_of_document, try scanner.next());
+}
 
 test "parseFromSlice fails" {
     const source =
@@ -402,7 +448,7 @@ test "malformed: balanced nesting beyond depth limit" {
     defer std.testing.allocator.free(buf);
     @memset(buf[0..depth], '[');
     @memset(buf[depth..], ']');
-    try std.testing.expectError(std.json.ParseFromValueError.UnexpectedToken, parseFromSlice(u32, std.testing.allocator, buf, .{}));
+    try std.testing.expectError(std.json.Scanner.Error.SyntaxError, parseFromSlice(u32, std.testing.allocator, buf, .{}));
     try std.testing.expectError(std.json.ParseFromValueError.UnexpectedToken, std.json.parseFromSlice(u32, std.testing.allocator, buf, .{}));
 }
 
@@ -436,12 +482,12 @@ test "malformed: incomplete null" {
 
 test "malformed: incomplete true" {
     try std.testing.expectError(std.json.Scanner.Error.UnexpectedEndOfInput, parseFromSlice(?u32, std.testing.allocator, "tru", .{}));
-    try std.testing.expectError(std.json.Scanner.Error.UnexpectedEndOfInput, std.json.parseFromSlice(?u32, std.testing.allocator, "nul", .{}));
+    try std.testing.expectError(std.json.Scanner.Error.UnexpectedEndOfInput, std.json.parseFromSlice(?u32, std.testing.allocator, "tru", .{}));
 }
 
 test "malformed: incomplete false" {
     try std.testing.expectError(std.json.Scanner.Error.UnexpectedEndOfInput, parseFromSlice(?u32, std.testing.allocator, "fals", .{}));
-    try std.testing.expectError(std.json.Scanner.Error.UnexpectedEndOfInput, std.json.parseFromSlice(?u32, std.testing.allocator, "nul", .{}));
+    try std.testing.expectError(std.json.Scanner.Error.UnexpectedEndOfInput, std.json.parseFromSlice(?u32, std.testing.allocator, "fals", .{}));
 }
 
 test "scientific notation" {
@@ -710,4 +756,9 @@ test "another large one" {
     ;
     const result = try parseFromSlice(Export, std.testing.allocator, src, .{});
     defer result.deinit();
+}
+
+test {
+    _ = @import("minify.zig");
+    _ = @import("validateUTF8.zig");
 }
