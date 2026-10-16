@@ -680,3 +680,16 @@ test "parseFromTokenSourceLeaky" {
     // If this is not desired, the options above should specify .allocate_always for the allocate parameter.
     try std.testing.expectEqualSlices(u8, "food", a.dinner);
 }
+
+test "parse value" {
+    const source = "100";
+
+    var tapeTokenSource = TapeTokenSource.init(source);
+    defer tapeTokenSource.deinit();
+
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const allocator = arena.allocator();
+    const result = try std.json.Value.jsonParse(allocator, &tapeTokenSource, .{ .max_value_len = 50 });
+    try std.testing.expectEqualDeep(std.json.Value{ .integer = 100 }, result);
+}

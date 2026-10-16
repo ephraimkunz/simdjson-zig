@@ -23,7 +23,7 @@ typedef struct {
 
 // Create a parser, allocating new memory. Should be freed when done with js_parser_free. This parser internally allocates
 // additional memory when sj_parser_parse is called. Should be reused if possible for performance.
-sj_parser *sj_parser_new(void);
+sj_parser *sj_parser_new(size_t max_capacity, size_t max_depth);
 
 // Free the memory used to create the parser, and any internal memory it allocated.
 void sj_parser_free(sj_parser *p);

@@ -15,6 +15,7 @@ pub const parseFromSlice = @import("toplevelfunctions.zig").parseFromSlice;
 pub const parseFromSliceLeaky = @import("toplevelfunctions.zig").parseFromSliceLeaky;
 
 pub const TapeTokenSource = @import("tapetokensource.zig").TapeTokenSource;
+pub const TapeParser = @import("tapetokensource.zig").TapeParser;
 
 pub const minify = @import("minify.zig").minify;
 pub const validate_utf8 = @import("validateUTF8.zig").validate_utf8;

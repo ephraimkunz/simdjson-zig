@@ -10,8 +10,10 @@ struct sj_parser {
     simdjson::dom::parser parser;
 };
 
-sj_parser *sj_parser_new(void) {
+sj_parser *sj_parser_new(size_t max_capacity, size_t max_depth) {
     auto parser = new sj_parser;
+    parser->parser.set_max_capacity(max_capacity);
+    parser->parser.allocate(0, max_depth);
     // We support big ints in the string table.
     parser->parser.number_as_string(true);
     return parser;

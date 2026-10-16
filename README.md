@@ -57,8 +57,7 @@ very similar to the JSON APIs in the standard library. This allows us to reuse p
 
 **TODO**: benchmark vs yyjson / std.json, expand API:
 * Load many?, parse many
-* Finish implementing drop-in std.json support
-* Expose parser (reuse) and parser options (max nesting level (max_depth), max allocations (set_max_capacity))
+* Finish implementing drop-in std.json support. test with jsonparse
 * Prettify? write out in general?
 * Update simdjson readme with a reference.
 * Reviews from Ziggit.
@@ -67,3 +66,6 @@ very similar to the JSON APIs in the standard library. This allows us to reuse p
 * Benchmarks sections showing speed vs c++ impl direct and std.json 
 * A tape to std.json.Value converter, and a comptime struct decoder that reads i64/u64/f64 straight from the tape?
 * Validate JSON?
+* Finish readme
+* surprising slow in debug builds, check this.
+* Test for common mistakes, like reusing the token multiple times, or accessing memory from the scanner from the previous run after the scanner has been used, threading
