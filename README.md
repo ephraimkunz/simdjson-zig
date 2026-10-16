@@ -1,5 +1,9 @@
 # simdjson-zig
 Zig bindings to [simdjson](https://github.com/simdjson/simdjson/tree/master), a SIMD-accelerated JSON parser written in C++.
+
+[View the docs](https://ephraimkunz.github.io/simdjson-zig/#docs.simdjson)
+
+
 The current version supported is [5.0.4](https://github.com/simdjson/simdjson/releases/tag/v5.0.4).
 
 These bindings support many of the features of simdjson:
