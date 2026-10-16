@@ -61,7 +61,7 @@ very similar to the JSON APIs in the standard library. This allows us to reuse p
 * Expose parser (reuse) and parser options (max nesting level (max_depth), max allocations (set_max_capacity))
 * Prettify?
 * Update simdjson readme with a reference.
-* Reviews from Ziglings
+* Reviews from Ziggit.
 * Test if it's really drop in by adding example programs.
 * Fuzzing and testing, especially with max nesting level and allocations enabled.
 * Benchmarks sections showing speed vs c++ impl direct and std.json 

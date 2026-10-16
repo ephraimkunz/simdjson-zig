@@ -1,6 +1,7 @@
 const std = @import("std");
 const sj = @import("simdjson");
 
+/// The UTF-8 validation function merely checks that the input is valid UTF-8: it works with strings in general, not just JSON strings.
 pub fn validate_utf8(str: []const u8) bool {
     return sj.sj_validate_utf8(str.ptr, str.len);
 }

@@ -160,4 +160,20 @@ pub fn build(b: *std.Build) void {
     const test_step = b.step("test", "Run tests");
     test_step.dependOn(&run_mod_tests.step);
     test_step.dependOn(&run_exe_tests.step);
+
+    // Docs are generated from a compile step, so make a throwaway library
+    // around the public module. Nothing here is installed except the docs.
+    const docs_lib = b.addLibrary(.{
+        .name = "simdjson_zig",
+        .root_module = mod,
+    });
+
+    const install_docs = b.addInstallDirectory(.{
+        .source_dir = docs_lib.getEmittedDocs(),
+        .install_dir = .prefix,
+        .install_subdir = "docs",
+    });
+
+    const docs_step = b.step("docs", "Generate documentation");
+    docs_step.dependOn(&install_docs.step);
 }

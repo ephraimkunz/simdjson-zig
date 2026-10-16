@@ -6,6 +6,8 @@ const Token = std.json.Token;
 const TokenType = std.json.TokenType;
 
 // https://github.com/simdjson/simdjson/blob/master/doc/tape.md
+/// This is a token source that can be passed into any function in [the std lib json namespace](https://ziglang.org/documentation/master/std/#std.json)
+/// that takes a generic source (a std.json.Reader or std.json.Scanner): [parseFromTokenSource](https://ziglang.org/documentation/master/std/#std.json.static.parseFromTokenSource), [parseFromTokenSourceLeaky](https://ziglang.org/documentation/master/std/#std.json.static.parseFromTokenSource), etc.
 pub const TapeTokenSource = struct {
     s: []const u8,
     pos: usize = 1, // Skip the first r entry.
@@ -66,6 +68,7 @@ pub const TapeTokenSource = struct {
         alloc_if_needed: std.mem.Allocator,
     };
 
+    /// See [std.json.Scanner.peekNextTokenType()](https://ziglang.org/documentation/master/std/#std.json.Scanner.peekNextTokenType).
     pub fn peekNextTokenType(self: *TapeTokenSource) TapeTokenSource.PeekError!TokenType {
         const t = try self.tape();
         if (self.pos >= t.tape.len) {
@@ -89,6 +92,8 @@ pub const TapeTokenSource = struct {
         }
     }
 
+    /// This function advances until the end of the object is found. For objects and arrays, this is until the
+    /// closing delimiter. For numbers or strings, it's to the end of the number or string.
     pub fn skipValue(self: *TapeTokenSource) TapeTokenSource.SkipError!void {
         const t = try self.tape();
         if (self.pos >= t.tape.len) {
@@ -110,11 +115,12 @@ pub const TapeTokenSource = struct {
         return {};
     }
 
+    /// See [std.json.Token](https://ziglang.org/documentation/master/std/#std.json.Scanner.Token) for documentation of this function.
     pub fn next(self: *TapeTokenSource) TapeTokenSource.NextError!std.json.Token {
         return self.next_internal(.alloc_never);
     }
 
-    /// https://ziglang.org/documentation/master/std/#std.json.Scanner.Token
+    /// See [std.json.Token](https://ziglang.org/documentation/master/std/#std.json.Scanner.Token) for documentation of `nextAlloc*()` function.
     pub fn nextAllocMax(self: *TapeTokenSource, allocator: std.mem.Allocator, when: std.json.AllocWhen, max_value_len: usize) !Token {
         _ = max_value_len;
         const nextAlloc: NextAllocStrategy = switch (when) {

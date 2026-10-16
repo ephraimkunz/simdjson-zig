@@ -3,6 +3,11 @@ const sj = @import("simdjson");
 
 const err = @import("error.zig");
 
+/// Minify a string (remove all unnecessary spaces).
+/// This function does not validate your content, and it does not parse it.
+/// It is much faster than parsing the string and re-serializing it in minified form.
+/// The output slice should point to a valid memory region that is as large as the input slice.
+/// Returns the number of bytes written to the output slice.
 pub fn minify(str: []const u8, out_buf: []u8) err.Error!usize {
     if (out_buf.len < str.len) {
         return err.Error.Capacity;
