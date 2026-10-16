@@ -33,6 +33,11 @@ pub const TapeTokenSource = struct {
         return self.cached_tape orelse self.parse_and_cache_tape();
     }
 
+    /// Just for testing, so we don't have to keep creating these.
+    fn reset(self: *TapeTokenSource) void {
+        self.pos = 1;
+    }
+
     fn parse_and_cache_tape(self: *TapeTokenSource) std.json.Scanner.Error!Tape {
         const parser = sj.sj_parser_new();
         self.cached_parser = parser;
@@ -117,17 +122,21 @@ pub const TapeTokenSource = struct {
 
     /// See [std.json.Token](https://ziglang.org/documentation/master/std/#std.json.Scanner.Token) for documentation of this function.
     pub fn next(self: *TapeTokenSource) TapeTokenSource.NextError!std.json.Token {
-        return self.next_internal(.alloc_never);
+        return self.next_internal(.alloc_never, null) catch |e| {
+            switch (e) {
+                TapeTokenSource.AllocError.ValueTooLong => unreachable,
+                else => |other| return other,
+            }
+        };
     }
 
     /// See [std.json.Token](https://ziglang.org/documentation/master/std/#std.json.Scanner.Token) for documentation of `nextAlloc*()` function.
     pub fn nextAllocMax(self: *TapeTokenSource, allocator: std.mem.Allocator, when: std.json.AllocWhen, max_value_len: usize) !Token {
-        _ = max_value_len;
         const nextAlloc: NextAllocStrategy = switch (when) {
             .alloc_if_needed => .{ .alloc_if_needed = allocator },
             .alloc_always => .{ .alloc_always = allocator },
         };
-        return self.next_internal(nextAlloc);
+        return self.next_internal(nextAlloc, max_value_len);
     }
 
     pub fn deinit(self: *TapeTokenSource) void {
@@ -136,10 +145,7 @@ pub const TapeTokenSource = struct {
         }
     }
 
-    fn next_internal(
-        self: *TapeTokenSource,
-        when: NextAllocStrategy,
-    ) TapeTokenSource.NextError!std.json.Token {
+    fn next_internal(self: *TapeTokenSource, when: NextAllocStrategy, max_value_len: ?usize) TapeTokenSource.AllocError!std.json.Token {
         const t = try self.tape();
         if (self.pos >= t.tape.len) {
             return Token.end_of_document;
@@ -160,10 +166,16 @@ pub const TapeTokenSource = struct {
                 const len = std.mem.readInt(u32, t.string_buf[index .. index + 4][0..4], .little);
                 const s = t.string_buf[index + 4 .. index + 4 + len];
 
-                return switch (when) {
-                    .alloc_always => |allocator| Token{ .allocated_string = try allocator.dupe(u8, s) },
-                    .alloc_if_needed, .alloc_never => Token{ .string = s },
-                };
+                switch (when) {
+                    .alloc_always => |allocator| {
+                        if (s.len > max_value_len orelse std.math.maxInt(usize)) {
+                            return TapeTokenSource.AllocError.ValueTooLong;
+                        } else {
+                            return Token{ .allocated_string = try allocator.dupe(u8, s) };
+                        }
+                    },
+                    .alloc_if_needed, .alloc_never => return Token{ .string = s },
+                }
             },
             'Z' => {
                 const index = 0x00FF_FFFF_FFFF_FFFF & val;
@@ -171,15 +183,21 @@ pub const TapeTokenSource = struct {
                 const s = t.string_buf[index + 4 .. index + 4 + len];
 
                 return switch (when) {
-                    .alloc_always => |allocator| Token{ .allocated_number = try allocator.dupe(u8, s) },
-                    .alloc_if_needed, .alloc_never => Token{ .number = s },
+                    .alloc_always => |allocator| if (s.len > max_value_len orelse std.math.maxInt(usize))
+                        TapeTokenSource.AllocError.ValueTooLong
+                    else
+                        Token{ .allocated_number = try allocator.dupe(u8, s) },
+                    .alloc_if_needed, .alloc_never => return Token{ .number = s },
                 };
             },
             'l' => {
                 const num: i64 = @bitCast(t.tape[self.pos]);
                 const num_str = std.mem.print(&self.scratch, "{d}", .{num}) catch unreachable;
                 const result = switch (when) {
-                    .alloc_always, .alloc_if_needed => |allocator| Token{ .allocated_number = try allocator.dupe(u8, num_str) },
+                    .alloc_always, .alloc_if_needed => |allocator| if (num_str.len > max_value_len orelse std.math.maxInt(usize))
+                        TapeTokenSource.AllocError.ValueTooLong
+                    else
+                        Token{ .allocated_number = try allocator.dupe(u8, num_str) },
                     .alloc_never => Token{ .number = num_str },
                 };
                 self.pos += 1;
@@ -189,7 +207,10 @@ pub const TapeTokenSource = struct {
                 const num: u64 = @bitCast(t.tape[self.pos]);
                 const num_str = std.mem.print(&self.scratch, "{d}", .{num}) catch unreachable;
                 const result = switch (when) {
-                    .alloc_always, .alloc_if_needed => |allocator| Token{ .allocated_number = try allocator.dupe(u8, num_str) },
+                    .alloc_always, .alloc_if_needed => |allocator| if (num_str.len > max_value_len orelse std.math.maxInt(usize))
+                        TapeTokenSource.AllocError.ValueTooLong
+                    else
+                        Token{ .allocated_number = try allocator.dupe(u8, num_str) },
                     .alloc_never => Token{ .number = num_str },
                 };
                 self.pos += 1;
@@ -199,7 +220,10 @@ pub const TapeTokenSource = struct {
                 const num: f64 = @bitCast(t.tape[self.pos]);
                 const num_str = std.mem.print(&self.scratch, "{e}", .{num}) catch unreachable;
                 const result = switch (when) {
-                    .alloc_always, .alloc_if_needed => |allocator| Token{ .allocated_number = try allocator.dupe(u8, num_str) },
+                    .alloc_always, .alloc_if_needed => |allocator| if (num_str.len > max_value_len orelse std.math.maxInt(usize))
+                        TapeTokenSource.AllocError.ValueTooLong
+                    else
+                        Token{ .allocated_number = try allocator.dupe(u8, num_str) },
                     .alloc_never => Token{ .number = num_str },
                 };
                 self.pos += 1;
@@ -223,4 +247,91 @@ test TapeTokenSource {
     try std.testing.expectEqual(Token.array_end, try scanner.next());
     try std.testing.expectEqual(Token.object_end, try scanner.next());
     try std.testing.expectEqual(Token.end_of_document, try scanner.next());
+}
+
+test "max_alloc_len string" {
+    var scanner = TapeTokenSource.init("\"abcdefg\"");
+    defer scanner.deinit();
+
+    // No alloc because we only do it if needed.
+    var s = (try scanner.nextAllocMax(std.testing.allocator, .alloc_if_needed, 3)).string;
+    try std.testing.expectEqualSlices(u8, "abcdefg", s);
+    scanner.reset();
+
+    // No error because we have just enough space.
+    s = (try scanner.nextAllocMax(std.testing.allocator, .alloc_always, 7)).allocated_string;
+    defer std.testing.allocator.free(s);
+    try std.testing.expectEqualSlices(u8, "abcdefg", s);
+    scanner.reset();
+
+    try std.testing.expectError(std.json.Scanner.AllocError.ValueTooLong, scanner.nextAllocMax(std.testing.allocator, .alloc_always, 6));
+}
+
+test "max_alloc_len big int" {
+    var scanner = TapeTokenSource.init("99999999999999999999");
+    defer scanner.deinit();
+
+    // No alloc because we only do it if needed.
+    var s = (try scanner.nextAllocMax(std.testing.allocator, .alloc_if_needed, 3)).number;
+    try std.testing.expectEqualSlices(u8, "99999999999999999999", s);
+    scanner.reset();
+
+    // No error because we have just enough space.
+    s = (try scanner.nextAllocMax(std.testing.allocator, .alloc_always, 20)).allocated_number;
+    defer std.testing.allocator.free(s);
+    try std.testing.expectEqualSlices(u8, "99999999999999999999", s);
+    scanner.reset();
+
+    try std.testing.expectError(std.json.Scanner.AllocError.ValueTooLong, scanner.nextAllocMax(std.testing.allocator, .alloc_always, 19));
+}
+
+test "max_alloc_len u64" {
+    var scanner = TapeTokenSource.init("12345");
+    defer scanner.deinit();
+
+    // Numbers eagerly allocated
+    try std.testing.expectError(std.json.Scanner.AllocError.ValueTooLong, scanner.nextAllocMax(std.testing.allocator, .alloc_if_needed, 3));
+    scanner.reset();
+
+    // No error because we have just enough space.
+    const s = (try scanner.nextAllocMax(std.testing.allocator, .alloc_always, 5)).allocated_number;
+    defer std.testing.allocator.free(s);
+    try std.testing.expectEqualSlices(u8, "12345", s);
+    scanner.reset();
+
+    try std.testing.expectError(std.json.Scanner.AllocError.ValueTooLong, scanner.nextAllocMax(std.testing.allocator, .alloc_always, 4));
+}
+
+test "max_alloc_len i64" {
+    var scanner = TapeTokenSource.init("-1234");
+    defer scanner.deinit();
+
+    // Numbers eagerly allocated
+    try std.testing.expectError(std.json.Scanner.AllocError.ValueTooLong, scanner.nextAllocMax(std.testing.allocator, .alloc_if_needed, 3));
+    scanner.reset();
+
+    // No error because we have just enough space.
+    const s = (try scanner.nextAllocMax(std.testing.allocator, .alloc_always, 5)).allocated_number;
+    defer std.testing.allocator.free(s);
+    try std.testing.expectEqualSlices(u8, "-1234", s);
+    scanner.reset();
+
+    try std.testing.expectError(std.json.Scanner.AllocError.ValueTooLong, scanner.nextAllocMax(std.testing.allocator, .alloc_always, 4));
+}
+
+test "max_alloc_len f64" {
+    var scanner = TapeTokenSource.init("1.234");
+    defer scanner.deinit();
+
+    // Numbers eagerly allocated
+    try std.testing.expectError(std.json.Scanner.AllocError.ValueTooLong, scanner.nextAllocMax(std.testing.allocator, .alloc_if_needed, 3));
+    scanner.reset();
+
+    // No error because we have just enough space.
+    const s = (try scanner.nextAllocMax(std.testing.allocator, .alloc_always, 7)).allocated_number;
+    defer std.testing.allocator.free(s);
+    try std.testing.expectEqualSlices(u8, "1.234e0", s);
+    scanner.reset();
+
+    try std.testing.expectError(std.json.Scanner.AllocError.ValueTooLong, scanner.nextAllocMax(std.testing.allocator, .alloc_always, 4));
 }

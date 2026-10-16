@@ -262,7 +262,7 @@ test "malformed: unbalanced nesting beyond depth limit" {
     try std.testing.expectError(std.json.ParseFromValueError.UnexpectedToken, std.json.parseFromSlice(u32, std.testing.allocator, buf, .{}));
 }
 
-test "malformed: integer beyond u64 range" {
+test "bigint" {
     const val = try parseFromSlice(u128, std.testing.allocator, "99999999999999999999", .{});
     defer val.deinit();
     try std.testing.expectEqual(99999999999999999999, val.value);
