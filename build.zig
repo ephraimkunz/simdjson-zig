@@ -8,9 +8,20 @@ pub fn build(b: *std.Build) void {
     // simdjson as a static C library
     // Always make this optimized for ReleaseFast, since no one's going to be debugging
     // it from here and simdjson assumes heavy inlining to avoid being super slow.
-    const simdjson_cpp_mod = b.createModule(.{ .target = target, .optimize = .fast, .link_libcpp = true });
-    simdjson_cpp_mod.addCSourceFile(.{ .file = b.path("vendor/simdjson.cpp") });
-    simdjson_cpp_mod.addCSourceFile(.{ .file = b.path("src/sj.cpp") });
+    const simdjson_cpp_mod = b.createModule(.{
+        .target = target,
+        .optimize = .fast,
+        .link_libcpp = true,
+    });
+    simdjson_cpp_mod.addCSourceFiles(.{ .flags = &.{
+        "-DSIMDJSON_DEVELOPMENT_CHECKS=0",
+        "-DNDEBUG=1",
+        "-DSIMDJSON_EXCEPTIONS=0",
+        "-DSIMDJSON_DISABLE_DEPRECATED_API=1",
+    }, .files = &.{
+        "vendor/simdjson.cpp",
+        "src/sj.cpp",
+    } });
     const simdjson_cpp_lib = b.addLibrary(.{
         .name = "simdjson",
         .linkage = .static,

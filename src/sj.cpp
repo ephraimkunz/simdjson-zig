@@ -1,9 +1,4 @@
 #include "sj.h"
-
-#define SIMDJSON_DEVELOPMENT_CHECKS 0
-#define NDEBUG
-#define SIMDJSON_EXCEPTIONS 0
-#define SIMDJSON_DISABLE_DEPRECATED_API 1
 #include "../vendor/simdjson.h"
 
 struct sj_parser {
