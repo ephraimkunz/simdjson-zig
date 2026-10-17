@@ -27,7 +27,7 @@ pub fn main(init: std.process.Init) !u8 {
     const stdin = &reader.interface;
     const input = try stdin.readAllocShort(allocator, 2_000_000_000);
     defer allocator.free(input);
-    try ensure_end_of_stream(stdin);
+    try ensureEndOfStream(stdin);
 
     switch (subcommand) {
         .validate => {
@@ -53,7 +53,7 @@ pub fn main(init: std.process.Init) !u8 {
 
 // Ensures there are no bytes left in the stream. If there are, or we can't determine
 // if there are, this returns an error.
-fn ensure_end_of_stream(reader: *std.Io.Reader) error{ InputTooLong, ReadFailed }!void {
+fn ensureEndOfStream(reader: *std.Io.Reader) error{ InputTooLong, ReadFailed }!void {
     _ = reader.peek(1) catch |err| {
         switch (err) {
             error.EndOfStream => return {},
@@ -92,7 +92,6 @@ const Subcommands = struct {
             comptime var buffer: []const u8 = "";
 
             inline for (commands) |command| {
-                // Concatenate the strings using comptimePrint
                 buffer = buffer ++ leading ++ @tagName(command.type) ++ ": " ++ command.description ++ "\n";
             }
 
