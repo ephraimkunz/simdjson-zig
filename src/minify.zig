@@ -7,8 +7,8 @@ const err = @import("error.zig");
 /// This function does not validate your content, and it does not parse it.
 /// It is much faster than parsing the string and re-serializing it in minified form.
 /// The output slice should point to a valid memory region that is as large as the input slice.
-/// Returns the number of bytes written to the output slice.
-pub fn minify(str: []const u8, out_buf: []u8) err.Error!usize {
+/// Returns a slice of `out_buf` starting at index 0 containing the result.
+pub fn minify(str: []const u8, out_buf: []u8) err.Error![]u8 {
     if (out_buf.len < str.len) {
         return err.Error.Capacity;
     }
@@ -16,7 +16,7 @@ pub fn minify(str: []const u8, out_buf: []u8) err.Error!usize {
     var length: usize = 0;
     const err_code = sj.sj_minify(str.ptr, str.len, out_buf.ptr, &length);
     try err.check(err_code);
-    return length;
+    return out_buf[0..length];
 }
 
 test minify {
@@ -25,14 +25,14 @@ test minify {
         \\ "value"        }
     ;
     var out: [source.len]u8 = undefined;
-    const count = try minify(source, &out);
-    try std.testing.expectEqualSlices(u8, out[0..count], "{\"this is a test\":\"value\"}");
+    const result = try minify(source, &out);
+    try std.testing.expectEqualSlices(u8, result, "{\"this is a test\":\"value\"}");
 }
 
 test "minify empty" {
     var out: [0]u8 = undefined;
-    const count = minify(&.{}, &out);
-    try std.testing.expectEqual(0, count);
+    const count = try minify(&.{}, &out);
+    try std.testing.expectEqual(0, count.len);
 }
 
 test "minify too small output buffer" {
@@ -41,15 +41,15 @@ test "minify too small output buffer" {
         \\ "value"        }
     ;
     var out: [0]u8 = undefined;
-    const count = minify(source, &out);
-    try std.testing.expectError(err.Error.Capacity, count);
+    const result = minify(source, &out);
+    try std.testing.expectError(err.Error.Capacity, result);
 }
 
 test "minify unterminated" {
     const source = "\"this is a test";
     var out: [source.len]u8 = undefined;
-    const count = minify(source, &out);
-    try std.testing.expectError(err.Error.UnclosedString, count);
+    const result = minify(source, &out);
+    try std.testing.expectError(err.Error.UnclosedString, result);
 }
 
 test "fuzz minify" {

@@ -35,7 +35,7 @@ pub fn build(b: *std.Build) void {
     // Here we define an executable. An executable needs to have a root module
     // which needs to expose a `main` function.
     const exe = b.addExecutable(.{
-        .name = "simdjson_cli",
+        .name = "simdjson",
         .root_module = b.createModule(.{
             // b.createModule defines a new module just like b.addModule but,
             // unlike b.addModule, it does not expose the module to consumers of

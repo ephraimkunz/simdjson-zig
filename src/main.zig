@@ -2,140 +2,103 @@ const std = @import("std");
 const Io = std.Io;
 const sj = @import("simdjson");
 
-pub fn main(init: std.process.Init) !void {
+pub fn main(init: std.process.Init) !u8 {
     const io = init.io;
-    const gpa = init.gpa;
-    const f = try std.Io.Dir.cwd().readFileAlloc(io, "data_1gb.json", init.gpa, .unlimited);
-    defer gpa.free(f);
+    const allocator = init.gpa;
 
-    const Export = struct {
-        metadata: Metadata,
-        users: []User,
+    const args = try init.minimal.args.toSlice(allocator);
+    defer allocator.free(args);
+    if (args.len != 2) {
+        const exe_name = if (args.len >= 1) args[0] else "simdjson_cli";
+        try usage(io, exe_name);
+        return 1;
+    }
 
-        const Metadata = struct {
-            configuration: Configuration,
-            generated_at: []const u8, // ISO 8601 with offset
-            generator: []const u8,
-            schema_version: u32,
-            statistics: Statistics,
-            version: []const u8,
-        };
+    const subcommand = std.meta.stringToEnum(Subcommand.Type, args[1]) orelse {
+        var writer = Io.File.stderr().writer(io, &.{});
+        const stderr = &writer.interface;
+        try stderr.print("\"{s}\" is not a valid subcommand.\n\nOptions are:\n{s}\n", .{ args[1], Subcommands.usage("  ") });
 
-        const Configuration = struct {
-            checksum_algo: []const u8,
-            compression: ?[]const u8,
-            encryption: bool,
-            export_settings: ExportSettings,
-            include_nulls: bool,
-            locale: []const u8,
-            pretty_print: bool,
-            source_systems: [][]const u8,
-        };
-
-        const ExportSettings = struct {
-            batch_size: u32,
-            retry_attempts: u32,
-            timeout_seconds: u32,
-        };
-
-        const Statistics = struct {
-            processing_time: ?f64, // null in the sample; adjust if it's really something else
-            total_records: u64,
-            validation_score: f64,
-        };
-
-        const User = struct {
-            address: Address,
-            age: u32,
-            avatar_url: []const u8,
-            balance: f64,
-            bio: []const u8,
-            birth_date: []const u8, // "YYYY-MM-DD"
-            created_at: []const u8,
-            currency: []const u8,
-            deleted_at: ?[]const u8,
-            email: []const u8,
-            first_name: []const u8,
-            gender: []const u8,
-            id: []const u8, // UUID
-            last_name: []const u8,
-            metadata: UserMetadata,
-            phone: []const u8, // string in the sample; keep as text to preserve leading zeros
-            preferences: Preferences,
-            premium: bool,
-            scores: Scores,
-            tags: [][]const u8,
-            updated_at: ?[]const u8,
-            username: []const u8,
-            verified: bool,
-        };
-
-        const Address = struct {
-            city: []const u8,
-            coordinates: Coordinates,
-            country: []const u8,
-            postal_code: []const u8,
-            state: []const u8,
-            street: []const u8,
-        };
-
-        const Coordinates = struct {
-            latitude: f64,
-            longitude: f64,
-        };
-
-        const UserMetadata = struct {
-            failed_attempts: u32,
-            features_enabled: [][]const u8,
-            last_login: ?[]const u8,
-            login_count: u32,
-            referral_code: []const u8,
-            referred_by: ?[]const u8,
-            subscription_tier: []const u8,
-        };
-
-        const Preferences = struct {
-            language: []const u8,
-            notifications: Notifications,
-            privacy: Privacy,
-            theme: []const u8,
-            timezone: []const u8,
-        };
-
-        const Notifications = struct {
-            email: bool,
-            in_app: bool,
-            push: bool,
-            sms: bool,
-        };
-
-        const Privacy = struct {
-            allow_indexing: bool,
-            profile_visible: bool,
-            show_email: bool,
-            show_phone: bool,
-        };
-
-        const Scores = struct {
-            activity: f64,
-            engagement: f64,
-            reliability: f64,
-            trust: f64,
-        };
+        return 1;
     };
 
-    var iter = init.minimal.args.iterate();
-    std.debug.assert(iter.skip());
-    const run_stdlib = iter.next() orelse "0";
-    if (std.mem.eql(u8, run_stdlib, "0")) {
-        std.debug.print("Using stdlib\n", .{});
-        const parsed = try std.json.parseFromSlice(Export, gpa, f, .{ .ignore_unknown_fields = true });
-        defer parsed.deinit();
-        std.debug.print("{} items\n", .{parsed.value.users.len});
-    } else {
-        std.debug.print("Using simdjson\n", .{});
-        const parsed = try sj.parseFromSlice(Export, gpa, f, .{ .ignore_unknown_fields = true });
-        defer parsed.deinit();
-        std.debug.print("{} items\n", .{parsed.value.users.len});
+    var buf: [4096]u8 = undefined;
+    var reader = std.Io.File.stdin().reader(io, &buf);
+    const stdin = &reader.interface;
+    const input = try stdin.readAllocShort(allocator, 2_000_000_000);
+    defer allocator.free(input);
+    try ensure_end_of_stream(stdin);
+
+    switch (subcommand) {
+        .validate => {
+            const is_valid = sj.validate(input);
+            if (is_valid) {
+                try Io.File.stdout().writeStreamingAll(io, "true\n");
+                return 0;
+            } else {
+                try Io.File.stdout().writeStreamingAll(io, "false\n");
+                return 1;
+            }
+        },
+        .minify => {
+            const out_buf = try allocator.alloc(u8, input.len);
+            defer allocator.free(out_buf);
+            const minified = try sj.minify(input, out_buf);
+            try Io.File.stdout().writeStreamingAll(io, minified);
+            try Io.File.stdout().writeStreamingAll(io, "\n");
+            return 0;
+        },
     }
 }
+
+// Ensures there are no bytes left in the stream. If there are, or we can't determine
+// if there are, this returns an error.
+fn ensure_end_of_stream(reader: *std.Io.Reader) error{ InputTooLong, ReadFailed }!void {
+    _ = reader.peek(1) catch |err| {
+        switch (err) {
+            error.EndOfStream => return {},
+            error.ReadFailed => return error.ReadFailed,
+        }
+    };
+
+    return error.InputTooLong;
+}
+
+fn usage(io: Io, exe_name: []const u8) !void {
+    const subcommands = Subcommands.usage("  ");
+    var writer = Io.File.stderr().writer(io, &.{});
+    const stderr = &writer.interface;
+    try stderr.print("Usage: {s} <subcommand>\n\nSubcommands:\n{s}\n\nAll subcommands take input from stdin (reading until EOF), and write output and errors to stdout and stderr, respectively.\nRedirect from these as needed.\n", .{ exe_name, subcommands });
+}
+
+const Subcommand = struct {
+    type: Type,
+    description: []const u8,
+
+    const Type = enum {
+        validate,
+        minify,
+    };
+};
+
+const Subcommands = struct {
+    const commands = [_]Subcommand{
+        .{ .type = .validate, .description = "return 0 if valid JSON, otherwise 1. Outputs true or false on stdout." },
+        .{ .type = .minify, .description = "return 0 on success, otherwise non 0. Outputs minified JSON on stdout." },
+    };
+
+    fn usage(comptime leading: []const u8) []const u8 {
+        const s = block: {
+            comptime var buffer: []const u8 = "";
+
+            inline for (commands) |command| {
+                // Concatenate the strings using comptimePrint
+                buffer = buffer ++ leading ++ @tagName(command.type) ++ ": " ++ command.description ++ "\n";
+            }
+
+            // Trim the trailing newline
+            break :block buffer[0 .. buffer.len - 1];
+        };
+        return s;
+    }
+};
