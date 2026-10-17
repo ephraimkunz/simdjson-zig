@@ -1,5 +1,5 @@
 const std = @import("std");
-const sj = @import("simdjson");
+const sj = @import("simdjson_c");
 const err = @import("error.zig");
 
 const Token = std.json.Token;

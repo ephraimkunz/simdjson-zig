@@ -72,3 +72,4 @@ very similar to the JSON APIs in the standard library. This allows us to reuse p
 * Validate JSON?
 * Finish readme
 * Test for common mistakes, like reusing the token multiple times, or accessing memory from the scanner from the previous run after the scanner has been used, threading
+* Provide a nice commandline json parser in the main executable.

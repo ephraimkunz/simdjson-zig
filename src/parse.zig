@@ -1,5 +1,5 @@
 const std = @import("std");
-const TapeTokenSource = @import("tapetokensource.zig").TapeTokenSource;
+const TapeTokenSource = @import("tape.zig").TapeTokenSource;
 
 /// This function matches the prototype of the [std.json.parseFromSlice](https://ziglang.org/documentation/master/std/#std.json.static.parseFromSlice) function,
 /// allowing that function to be replaced seamlessly by this one. Note that this function uses more memory as it

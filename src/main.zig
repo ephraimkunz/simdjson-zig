@@ -1,7 +1,6 @@
 const std = @import("std");
 const Io = std.Io;
-
-const sj = @import("simdjson_zig");
+const sj = @import("simdjson");
 
 pub fn main(init: std.process.Init) !void {
     const io = init.io;
