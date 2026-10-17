@@ -22,7 +22,7 @@ pub fn build(b: *std.Build) void {
     // target and optimize options) will be listed when running `zig build --help`
     // in this directory.
 
-    // SQLite as a static C library
+    // simdjson as a static C library
     const simdjson = b.addLibrary(.{
         .name = "simdjson",
         .linkage = .static,
