@@ -71,5 +71,4 @@ very similar to the JSON APIs in the standard library. This allows us to reuse p
 * A tape to std.json.Value converter, and a comptime struct decoder that reads i64/u64/f64 straight from the tape?
 * Validate JSON?
 * Finish readme
-* surprising slow in debug builds, check this.
 * Test for common mistakes, like reusing the token multiple times, or accessing memory from the scanner from the previous run after the scanner has been used, threading

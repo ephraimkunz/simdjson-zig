@@ -125,27 +125,18 @@ pub fn main(init: std.process.Init) !void {
         };
     };
 
-    // var iter = init.minimal.args.iterate();
-    // std.debug.assert(iter.skip());
-    // const run_stdlib = iter.next() orelse "0";
-    // if (std.mem.eql(u8, run_stdlib, "0")) {
-    //     std.debug.print("Using stdlib\n", .{});
-    //     const parsed = try std.json.parseFromSlice(Export, gpa, f, .{ .ignore_unknown_fields = true });
-    //     defer parsed.deinit();
-    //     std.debug.print("{} items\n", .{parsed.value.users.len});
-    // } else {
-    //     std.debug.print("Using simdjson\n", .{});
-    //     const parsed = try sj.parseFromSlice(Export, gpa, f, .{ .ignore_unknown_fields = true });
-    //     defer parsed.deinit();
-    //     std.debug.print("{} items\n", .{parsed.value.users.len});
-    // }
-
-    const parser = sj.TapeParser.init(.{ .max_depth = 1 });
-    defer parser.deinit();
-
-    var tokenSource = sj.TapeTokenSource.initWithParser(f, parser);
-    defer tokenSource.deinit();
-
-    const result = try std.json.parseFromTokenSource(Export, init.allocator, &tokenSource, .{});
-    defer result.deinit();
+    var iter = init.minimal.args.iterate();
+    std.debug.assert(iter.skip());
+    const run_stdlib = iter.next() orelse "0";
+    if (std.mem.eql(u8, run_stdlib, "0")) {
+        std.debug.print("Using stdlib\n", .{});
+        const parsed = try std.json.parseFromSlice(Export, gpa, f, .{ .ignore_unknown_fields = true });
+        defer parsed.deinit();
+        std.debug.print("{} items\n", .{parsed.value.users.len});
+    } else {
+        std.debug.print("Using simdjson\n", .{});
+        const parsed = try sj.parseFromSlice(Export, gpa, f, .{ .ignore_unknown_fields = true });
+        defer parsed.deinit();
+        std.debug.print("{} items\n", .{parsed.value.users.len});
+    }
 }
