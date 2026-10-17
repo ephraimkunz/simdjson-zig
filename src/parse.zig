@@ -1,6 +1,5 @@
 const std = @import("std");
 const TapeTokenSource = @import("tape.zig").TapeTokenSource;
-const testing = @import("test.zig");
 
 /// This function matches the prototype of the [std.json.parseFromSlice](https://ziglang.org/documentation/master/std/#std.json.static.parseFromSlice) function,
 /// allowing that function to be replaced seamlessly by this one. Note that this function uses more memory as it
@@ -456,7 +455,8 @@ test "fuzz parseFromSliceLeaky" {
 }
 
 test "another large one" {
-    const result = try parseFromSlice(testing.Export, std.testing.allocator, testing.export_data, .{});
+    const fixtures = @import("fixtures.zig");
+    const result = try parseFromSlice(fixtures.Export, std.testing.allocator, fixtures.export_data, .{});
     defer result.deinit();
 }
 

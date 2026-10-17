@@ -1,7 +1,6 @@
 const std = @import("std");
 const sj = @import("simdjson_c");
 const err = @import("error.zig");
-const testing = @import("test.zig");
 
 const Token = std.json.Token;
 const TokenType = std.json.TokenType;
@@ -431,21 +430,25 @@ test "user-provided parser" {
 }
 
 test "max depth" {
+    const fixtures = @import("fixtures.zig");
+
     const parser = TapeParser.init(.{ .max_depth = 1 });
     defer parser.deinit();
 
-    var tokenSource = TapeTokenSource.initWithParser(testing.export_data, parser);
+    var tokenSource = TapeTokenSource.initWithParser(fixtures.export_data, parser);
     defer tokenSource.deinit();
 
-    try std.testing.expectError(std.json.Scanner.Error.SyntaxError, std.json.parseFromTokenSource(testing.Export, std.testing.allocator, &tokenSource, .{}));
+    try std.testing.expectError(std.json.Scanner.Error.SyntaxError, std.json.parseFromTokenSource(fixtures.Export, std.testing.allocator, &tokenSource, .{}));
 }
 
 test "max capacity" {
+    const fixtures = @import("fixtures.zig");
+
     const parser = TapeParser.init(.{ .max_capacity = 100 });
     defer parser.deinit();
 
-    var tokenSource = TapeTokenSource.initWithParser(testing.export_data, parser);
+    var tokenSource = TapeTokenSource.initWithParser(fixtures.export_data, parser);
     defer tokenSource.deinit();
 
-    try std.testing.expectError(std.json.Scanner.Error.SyntaxError, std.json.parseFromTokenSource(testing.Export, std.testing.allocator, &tokenSource, .{}));
+    try std.testing.expectError(std.json.Scanner.Error.SyntaxError, std.json.parseFromTokenSource(fixtures.Export, std.testing.allocator, &tokenSource, .{}));
 }
