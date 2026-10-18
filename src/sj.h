@@ -29,7 +29,10 @@ sj_parser *sj_parser_new(size_t max_capacity, size_t max_depth);
 void sj_parser_free(sj_parser *p);
 
 // Parse the input string. Should only be called once for a given input string, as it parses all in one go.
-int sj_parser_parse(sj_parser *p, const char *buf, size_t len);
+// If zero_copy is set, performance may be slower but more memory efficient, since the buffer isn't copied and 
+// padded internally. Otherwise, performance may be faster but may use more memory. 
+// See https://github.com/simdjson/simdjson/blob/master/doc/dom.md#parsing-without-padding
+int sj_parser_parse(sj_parser *p, const char *buf, size_t len, bool zero_copy);
 
 // View into sj_parser, so must not outlive that as it references data in the parser. No need to free anything
 // when done with this.

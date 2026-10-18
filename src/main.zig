@@ -9,7 +9,7 @@ pub fn main(init: std.process.Init) !u8 {
     const args = try init.minimal.args.toSlice(allocator);
     defer allocator.free(args);
     if (args.len != 2) {
-        const exe_name = if (args.len >= 1) args[0] else "simdjson_cli";
+        const exe_name = if (args.len >= 1) args[0] else "simdjson";
         try usage(io, exe_name);
         return 1;
     }

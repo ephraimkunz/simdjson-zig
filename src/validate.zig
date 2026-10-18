@@ -12,7 +12,7 @@ pub fn validate_utf8(s: []const u8) bool {
 pub fn validate(s: []const u8) bool {
     const parser = TapeParser.init(.{});
     defer parser.deinit();
-    err.check(sj.sj_parser_parse(parser.inner, s.ptr, s.len)) catch return false;
+    err.check(sj.sj_parser_parse(parser.inner, s.ptr, s.len, parser.zero_copy)) catch return false;
     return true;
 }
 

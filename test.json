@@ -1,0 +1,52 @@
+{
+  "meta": {
+    "name": "simdjson test fixture",
+    "version": 3,
+    "generated": "2026-10-17T18:08:00-06:00",
+    "tags": ["json", "simd", "zero-copy", "unpadded"],
+    "ok": true,
+    "nothing": null
+  },
+  "numbers": {
+    "zero": 0,
+    "negative_zero": -0,
+    "small_int": 42,
+    "negative_int": -9007199254740993,
+    "int64_min": -9223372036854775808,
+    "int64_max": 9223372036854775807,
+    "uint64_max": 18446744073709551615,
+    "pi": 3.141592653589793,
+    "tiny": 1.5e-300,
+    "huge": 1.7976931348623157e308,
+    "exp": 6.022E23,
+    "list": [1, 2, 3, 4.5, -6.25, 7e2, 0.1, 0.2, 0.30000000000000004]
+  },
+  "strings": {
+    "empty": "",
+    "ascii": "The quick brown fox jumps over the lazy dog",
+    "escapes": "tab:\t newline:\n quote:\" backslash:\\ slash:\/ bell:\u0007",
+    "unicode": "caf\u00e9 \u4e2d\u6587 \ud83d\ude80 \u00fcber",
+    "utf8_raw": "café 中文 🚀 über",
+    "long": "Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat."
+  },
+  "nested": {"a": {"b": {"c": {"d": {"e": [[[[["deep"]]]]]}}}}},
+  "empty_object": {},
+  "empty_array": [],
+  "records": [
+    {"id": 1,  "name": "Alice",   "email": "alice@example.com",   "active": true,  "score": 91.5, "tags": ["admin", "dev"],      "address": {"city": "Provo",     "zip": "84601"}},
+    {"id": 2,  "name": "Bob",     "email": "bob@example.com",     "active": false, "score": 72.25,"tags": ["ops"],               "address": {"city": "Orem",      "zip": "84057"}},
+    {"id": 3,  "name": "Carol",   "email": "carol@example.com",   "active": true,  "score": 88.0, "tags": ["dev", "qa"],         "address": {"city": "Lehi",      "zip": "84043"}},
+    {"id": 4,  "name": "Dave",    "email": "dave@example.com",    "active": true,  "score": 65.75,"tags": [],                    "address": {"city": "Ogden",     "zip": "84401"}},
+    {"id": 5,  "name": "Eve",     "email": "eve@example.com",     "active": false, "score": 99.9, "tags": ["security"],          "address": {"city": "Logan",     "zip": "84321"}},
+    {"id": 6,  "name": "Frank",   "email": "frank@example.com",   "active": true,  "score": 54.0, "tags": ["dev"],               "address": {"city": "Sandy",     "zip": "84070"}},
+    {"id": 7,  "name": "Grace",   "email": "grace@example.com",   "active": true,  "score": 93.125,"tags": ["admin", "ops"],     "address": {"city": "Draper",    "zip": "84020"}},
+    {"id": 8,  "name": "Heidi",   "email": "heidi@example.com",   "active": false, "score": 80.5, "tags": ["qa"],                "address": {"city": "Murray",    "zip": "84107"}},
+    {"id": 9,  "name": "Ivan",    "email": "ivan@example.com",    "active": true,  "score": 77.7, "tags": ["dev", "security"],   "address": {"city": "Provo",     "zip": "84604"}},
+    {"id": 10, "name": "Judy",    "email": "judy@example.com",    "active": true,  "score": 85.0, "tags": ["ops", "qa", "dev"],  "address": {"city": "Spanish Fork", "zip": "84660"}},
+    {"id": 11, "name": "Mallory", "email": "mallory@example.com", "active": false, "score": 0,    "tags": null,                 "address": null},
+    {"id": 12, "name": "Niaj",    "email": "niaj@example.com",    "active": true,  "score": 61.4, "tags": ["dev"],               "address": {"city": "Springville", "zip": "84663"}}
+  ],
+  "matrix": [[1, 2, 3], [4, 5, 6], [7, 8, 9]],
+  "mixed": [1, "two", 3.0, true, false, null, {"k": "v"}, [1, [2, [3]]]],
+  "trailing_note": "last field, so the buffer ends right after this object"
+}

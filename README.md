@@ -15,6 +15,7 @@ These bindings support many of the features of simdjson:
 | [Minify](https://github.com/simdjson/simdjson/blob/master/doc/basics.md#minifying-json-strings-without-parsing) | ✅ |  |
 | [UTF8 Validation](https://github.com/simdjson/simdjson/blob/master/doc/basics.md#minifying-json-strings-without-parsing) | ✅ |  |
 | [Parse many](https://github.com/simdjson/simdjson/blob/master/doc/parse_many.md) | ✅ | Fast parsing of documents containing many small JSON objects. **TODO**: In progress |
+| Optional [zero copy parsing](https://github.com/simdjson/simdjson/blob/master/doc/dom.md#parsing-without-padding) |  ✅ | Sometimes zero copy is faster, sometimes it is slower, depends on the size of the input |
 | [OnDemand parsing](https://github.com/simdjson/simdjson/blob/master/doc/basics.md#the-basics-loading-and-parsing-json-documents) | ❌ | Supporting this would be difficult, see [Rust binding documentation](https://github.com/SunDoge/simdjson-rust#why-only-dom-not-ondemand) |
 | [Generating JSON output](https://github.com/simdjson/simdjson/blob/master/doc/builder.md) | ❌ | Uses C++ specific features |
 | [Compile-time parsing](https://github.com/simdjson/simdjson/blob/master/doc/compile_time.md) | ❌ | Uses C++ specific features |
@@ -69,6 +70,14 @@ very similar to the JSON APIs in the standard library. This allows us to reuse p
 * Fuzzing and testing, especially with max nesting level and allocations enabled.
 * Benchmarks sections showing speed vs c++ impl direct and std.json 
 * A tape to std.json.Value converter, and a comptime struct decoder that reads i64/u64/f64 straight from the tape?
-* Validate JSON?
 * Finish readme
-* Test for common mistakes, like reusing the token multiple times, or accessing memory from the scanner from the previous run after the scanner has been used, threading
+* Test for common mistakes, like reusing the token multiple times, or accessing memory from the scanner from the previous run after the scanner has been used, threading, zero copy ownership
+
+Benchmark large, small, mmap, zero copy.
+
+2. sj_parser_new cannot fail. Throwing new, ignored allocate result, TapeParser.init never checks null.
+4. Capacity and depth map to SyntaxError. Default depth 1024 diverges from std.
+5. validate allocates a parser per call, reports OOM as invalid JSON, and has no fuzz test.
+6. Aliasing guard, deinit not nulling cached_parser, TAPE_ERROR to UnexpectedEndOfInput, non-const Tape fields.
+7. README says import simdjson-zig but the module is simdjson, gives minify the old return type, omits validate, marks "Parse many" supported, and has the broken UTF-8 link, empty rows, and typos.
+8. Docs and API: Error not re-exported, inferred error set on nextAllocMax, snake_case function names, module doc promising stringification and Value, "then to reconstruct" typo, sj.h typo and stale tape-view comment.

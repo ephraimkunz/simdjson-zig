@@ -18,8 +18,13 @@ void sj_parser_free(sj_parser *p) {
     delete p;
 }
 
-int sj_parser_parse(sj_parser *p, const char *buf, size_t len) {
-    int error = p->parser.parse(buf, len, true).error();
+int sj_parser_parse(sj_parser *p, const char *buf, size_t len, bool zero_copy) {
+    int error = 0;
+    if (zero_copy) {
+        error = p->parser.parse_unpadded(buf, len).error();
+    } else {
+        error = p->parser.parse(buf, len, true).error();
+    }
     return error;
 }
 

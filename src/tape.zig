@@ -8,8 +8,10 @@ const TokenType = std.json.TokenType;
 /// This is the lower-level parser that TapeTokenSource actually reads from. If you are parsing many JSON documents, it's more efficient to construct
 /// the parser once and reuse it for each parse by passing it to TapeTokenSource, then to reconstruct it each time.
 /// Using TapeParser with the TapeTokenSource also allows you to customize parser behavior with options.
+/// Using TapeTokenSource without an explicit TapeParser is the same as using it with one with default Options, and no reuse-between calls.
 pub const TapeParser = struct {
     inner: ?*sj.sj_parser,
+    zero_copy: bool,
 
     pub const Options = struct {
         /// This is the largest document this parser can automatically support.
@@ -21,10 +23,16 @@ pub const TapeParser = struct {
         /// The maximum depth of this parser (the most deeply nested objects and arrays it can process).
         /// The default used here is what the simdjson library uses as a default.
         max_depth: usize = 1024,
+
+        /// If zero_copy is set, performance may be slower but more memory efficient, since the buffer isn't copied and
+        /// padded internally when parsing. Otherwise, performance may be faster but may use more memory. Speed and memory
+        /// use depend on the size of the file being parsed, and sometimes zero_copy may be preferable.
+        /// See https://github.com/simdjson/simdjson/blob/master/doc/dom.md#parsing-without-padding
+        zero_copy: bool = true,
     };
 
     pub fn init(options: Options) TapeParser {
-        return .{ .inner = sj.sj_parser_new(options.max_capacity, options.max_depth) };
+        return .{ .inner = sj.sj_parser_new(options.max_capacity, options.max_depth), .zero_copy = options.zero_copy };
     }
 
     pub fn deinit(self: TapeParser) void {
@@ -79,6 +87,7 @@ pub const TapeTokenSource = struct {
         const has_user_provided_parser = self.parser != null;
         const options = TapeParser.Options{};
         const parser = if (self.parser) |p| p.inner else sj.sj_parser_new(options.max_capacity, options.max_depth);
+        const zero_copy = if (self.parser) |p| p.zero_copy else options.zero_copy;
 
         if (!has_user_provided_parser) {
             self.cached_parser = parser;
@@ -86,11 +95,12 @@ pub const TapeTokenSource = struct {
 
         // Ideally we'd like to return a richer error set here but we're limited by the minimal
         // error set of all the places tape() is called, since we want to do this parsing on demand.
-        err.check(sj.sj_parser_parse(parser, self.s.ptr, self.s.len)) catch |e| {
+        err.check(sj.sj_parser_parse(parser, self.s.ptr, self.s.len, zero_copy)) catch |e| {
             switch (e) {
                 err.Error.TapeError, err.Error.UnclosedString, err.Error.Empty, err.Error.NAtomError, err.Error.TAtomError, err.Error.FAtomError => return std.json.Scanner.Error.UnexpectedEndOfInput,
                 err.Error.Utf8Error, err.Error.NumberError, err.Error.UnescapedChars, err.Error.StringError, err.Error.DepthError, err.Error.Capacity => return std.json.Scanner.Error.SyntaxError,
-                else => unreachable,
+                // The above were explicitly hit and mapped to the closest error that std.json uses. Below were never hit and are caught for safety.
+                else => return std.json.Scanner.Error.SyntaxError,
             }
         };
         const c_tape = sj.sj_parser_get_tape_view(parser);
@@ -290,6 +300,8 @@ test TapeTokenSource {
     try std.testing.expectEqual(Token.object_end, try scanner.next());
     try std.testing.expectEqual(Token.end_of_document, try scanner.next());
 }
+
+test "zero copy" {}
 
 test "max_alloc_len string" {
     var scanner = TapeTokenSource.init("\"abcdefg\"");
