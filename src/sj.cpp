@@ -5,13 +5,17 @@ struct sj_parser {
     simdjson::dom::parser parser;
 };
 
-sj_parser *sj_parser_new(size_t max_capacity, size_t max_depth) {
+int sj_parser_new(size_t max_capacity, size_t max_depth, sj_parser **out_parser) {
     auto parser = new sj_parser;
     parser->parser.set_max_capacity(max_capacity);
-    parser->parser.allocate(0, max_depth);
+    auto rc = parser->parser.allocate(0, max_depth);
+    if (rc != simdjson::error_code::SUCCESS) {
+        return rc;
+    }
     // We support big ints in the string table.
     parser->parser.number_as_string(true);
-    return parser;
+    *out_parser = parser;
+    return simdjson::error_code::SUCCESS;
 }
 
 void sj_parser_free(sj_parser *p) {

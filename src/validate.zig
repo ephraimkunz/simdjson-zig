@@ -9,8 +9,8 @@ pub fn validateUTF8(s: []const u8) bool {
 }
 
 /// Scan the input and check for malformed JSON.
-pub fn validate(s: []const u8) bool {
-    const parser = TapeParser.init(.{});
+pub fn validate(s: []const u8) std.mem.Allocator.Error!bool {
+    const parser = try TapeParser.init(.{});
     defer parser.deinit();
     err.check(sj.sj_parser_parse(parser.inner, s.ptr, s.len, parser.zero_copy)) catch return false;
     return true;
@@ -26,10 +26,10 @@ test "validate_utf8 invalid" {
 
 test validate {
     const bad_json = "{{5}}";
-    try std.testing.expect(!validate(bad_json));
+    try std.testing.expect(!try validate(bad_json));
 
     const good_json = "{\"a\": {\"good\": 5.34}}";
-    try std.testing.expect(validate(good_json));
+    try std.testing.expect(try validate(good_json));
 }
 
 test "fuzz validateUTF8" {

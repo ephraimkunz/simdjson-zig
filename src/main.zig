@@ -31,7 +31,7 @@ pub fn main(init: std.process.Init) !u8 {
 
     switch (subcommand) {
         .validate => {
-            const is_valid = sj.validate(input);
+            const is_valid = try sj.validate(input);
             if (is_valid) {
                 try Io.File.stdout().writeStreamingAll(io, "true\n");
                 return 0;

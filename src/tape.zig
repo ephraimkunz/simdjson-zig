@@ -10,7 +10,7 @@ const TokenType = std.json.TokenType;
 /// Using TapeParser with the TapeTokenSource also allows you to customize parser behavior with options.
 /// Using TapeTokenSource without an explicit TapeParser is the same as using it with one with default Options, and no reuse-between calls.
 pub const TapeParser = struct {
-    inner: ?*sj.sj_parser,
+    inner: *sj.sj_parser,
     zero_copy: bool,
 
     pub const Options = struct {
@@ -31,8 +31,10 @@ pub const TapeParser = struct {
         zero_copy: bool = true,
     };
 
-    pub fn init(options: Options) TapeParser {
-        return .{ .inner = sj.sj_parser_new(options.max_capacity, options.max_depth), .zero_copy = options.zero_copy };
+    pub fn init(options: Options) std.mem.Allocator.Error!TapeParser {
+        var inner: ?*sj.sj_parser = null;
+        err.check(sj.sj_parser_new(options.max_capacity, options.max_depth, &inner)) catch return std.mem.Allocator.Error.OutOfMemory;
+        return .{ .inner = inner.?, .zero_copy = options.zero_copy };
     }
 
     pub fn deinit(self: TapeParser) void {
@@ -86,7 +88,13 @@ pub const TapeTokenSource = struct {
     fn parseAndCacheTape(self: *TapeTokenSource) std.json.Scanner.Error!Tape {
         const has_user_provided_parser = self.parser != null;
         const options = TapeParser.Options{};
-        const parser = if (self.parser) |p| p.inner else sj.sj_parser_new(options.max_capacity, options.max_depth);
+        var inner: ?*sj.sj_parser = null;
+        if (self.parser) |p| {
+            inner = p.inner;
+        } else {
+            err.check(sj.sj_parser_new(options.max_capacity, options.max_depth, &inner)) catch return std.json.Scanner.Error.UnexpectedEndOfInput;
+        }
+        const parser = inner.?;
         const zero_copy = if (self.parser) |p| p.zero_copy else options.zero_copy;
 
         if (!has_user_provided_parser) {
@@ -303,11 +311,11 @@ test TapeTokenSource {
 
 test "zero copy" {
     const fixtures = @import("fixtures.zig");
-    const parser = TapeParser.init(.{ .zero_copy = true });
+    const parser = try TapeParser.init(.{ .zero_copy = true });
     defer parser.deinit();
     var source = TapeTokenSource.initWithParser(fixtures.export_data, parser);
     defer source.deinit();
-    var c_parser = TapeParser.init(.{ .zero_copy = false });
+    var c_parser = try TapeParser.init(.{ .zero_copy = false });
     defer c_parser.deinit();
     var c_source = TapeTokenSource.initWithParser(fixtures.export_data, c_parser);
     defer c_source.deinit();
@@ -431,7 +439,7 @@ test "user-provided parser" {
         "{\"dinner\": \"chips\"}",
     };
 
-    const parser = TapeParser.init(.{});
+    const parser = try TapeParser.init(.{});
     defer parser.deinit();
 
     const S = struct { dinner: []const u8 };
@@ -460,7 +468,7 @@ test "user-provided parser" {
 test "max depth" {
     const fixtures = @import("fixtures.zig");
 
-    const parser = TapeParser.init(.{ .max_depth = 1 });
+    const parser = try TapeParser.init(.{ .max_depth = 1 });
     defer parser.deinit();
 
     var tokenSource = TapeTokenSource.initWithParser(fixtures.export_data, parser);
@@ -472,11 +480,19 @@ test "max depth" {
 test "max capacity" {
     const fixtures = @import("fixtures.zig");
 
-    const parser = TapeParser.init(.{ .max_capacity = 100 });
+    const parser = try TapeParser.init(.{ .max_capacity = 100 });
     defer parser.deinit();
 
     var tokenSource = TapeTokenSource.initWithParser(fixtures.export_data, parser);
     defer tokenSource.deinit();
 
     try std.testing.expectError(std.json.Scanner.Error.SyntaxError, std.json.parseFromTokenSource(fixtures.Export, std.testing.allocator, &tokenSource, .{}));
+}
+
+test "zero max_depth" {
+    try std.testing.expectError(std.mem.Allocator.Error.OutOfMemory, TapeParser.init(.{ .max_depth = 0 }));
+}
+
+test "large max_depth" {
+    try std.testing.expectError(std.mem.Allocator.Error.OutOfMemory, TapeParser.init(.{ .max_depth = 0xFFFFFFFF }));
 }

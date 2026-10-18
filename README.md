@@ -45,7 +45,7 @@ expecting an unparsed number, resulting in us having to re-serialize a number no
 Additionally, the Zig binding adds new API for functionality simdjson exposes that the standard libraray doesn't:
 * `fn minify(str: []const u8, out_buf: []u8) err.Error![]u8` to minifiy JSON strings without parsing.
 * `pub fn validateUTF8(str: []const u8) bool` to validate that a sequence of bytes are UTF-8 encoded.
-* `pub fn validate(s: []const u8) bool` to scan the input and check for malformed JSON.
+* `pub fn validate(s: []const u8) std.mem.Allocator.Error!bool` to scan the input and check for malformed JSON.
 
 
 ## Tips for speed
@@ -73,8 +73,5 @@ very similar to the JSON APIs in the standard library. This allows us to reuse p
 * Benchmarks sections showing speed vs c++ impl direct and std.json 
 * Finish readme
 * Test for common mistakes, like reusing the token multiple times, or accessing memory from the scanner from the previous run after the scanner has been used, threading, zero copy ownership
-
-Benchmark large, small, mmap, zero copy.
-
-2. sj_parser_new cannot fail. Throwing new, ignored allocate result, TapeParser.init never checks null.
-6. Aliasing guard, TAPE_ERROR to UnexpectedEndOfInput.
+* Benchmark large, small, mmap, zero copy.
+* Aliasing guard, TAPE_ERROR to UnexpectedEndOfInput.
