@@ -301,7 +301,23 @@ test TapeTokenSource {
     try std.testing.expectEqual(Token.end_of_document, try scanner.next());
 }
 
-test "zero copy" {}
+test "zero copy" {
+    const fixtures = @import("fixtures.zig");
+    const parser = TapeParser.init(.{ .zero_copy = true });
+    defer parser.deinit();
+    var source = TapeTokenSource.initWithParser(fixtures.export_data, parser);
+    defer source.deinit();
+    var c_parser = TapeParser.init(.{ .zero_copy = false });
+    defer c_parser.deinit();
+    var c_source = TapeTokenSource.initWithParser(fixtures.export_data, c_parser);
+    defer c_source.deinit();
+    const result = try std.json.parseFromTokenSource(fixtures.Export, std.testing.allocator, &source, .{});
+    defer result.deinit();
+    const c_result = try std.json.parseFromTokenSource(fixtures.Export, std.testing.allocator, &c_source, .{});
+    defer c_result.deinit();
+
+    try std.testing.expectEqualDeep(c_result, result);
+}
 
 test "max_alloc_len string" {
     var scanner = TapeTokenSource.init("\"abcdefg\"");
