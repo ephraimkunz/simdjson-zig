@@ -37,7 +37,6 @@ pub const TapeParser = struct {
 
     pub fn deinit(self: TapeParser) void {
         sj.sj_parser_free(self.inner);
-        self.inner = null;
     }
 };
 
@@ -196,8 +195,6 @@ pub const TapeTokenSource = struct {
         if (self.cached_parser) |parser| {
             sj.sj_parser_free(parser);
         }
-        self.cached_parser = null;
-        self.cached_tape = null;
     }
 
     fn nextInternal(self: *TapeTokenSource, when: NextAllocStrategy, max_value_len: ?usize) TapeTokenSource.AllocError!std.json.Token {
