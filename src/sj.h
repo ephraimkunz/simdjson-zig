@@ -45,7 +45,7 @@ sj_tape sj_parser_get_tape_view(sj_parser *p);
 // Does not validate that input is proper JSON.
 int sj_minify(const char *buf, size_t len, char *dst, size_t *dst_len);
 
-// Validate that a string is UTF8.
+// Validate that a string is UTF-8.
 bool sj_validate_utf8(const char *buf, size_t len);
 
 #ifdef __cplusplus

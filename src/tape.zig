@@ -6,7 +6,7 @@ const Token = std.json.Token;
 const TokenType = std.json.TokenType;
 
 /// This is the lower-level parser that TapeTokenSource actually reads from. If you are parsing many JSON documents, it's more efficient to construct
-/// the parser once and reuse it for each parse by passing it to TapeTokenSource, then to reconstruct it each time.
+/// the parser once and reuse it for each parse by passing it to TapeTokenSource, than to reconstruct it each time.
 /// Using TapeParser with the TapeTokenSource also allows you to customize parser behavior with options.
 /// Using TapeTokenSource without an explicit TapeParser is the same as using it with one with default Options, and no reuse-between calls.
 pub const TapeParser = struct {
@@ -37,6 +37,7 @@ pub const TapeParser = struct {
 
     pub fn deinit(self: TapeParser) void {
         sj.sj_parser_free(self.inner);
+        self.inner = null;
     }
 };
 
@@ -75,7 +76,7 @@ pub const TapeTokenSource = struct {
     }
 
     fn tape(self: *TapeTokenSource) std.json.Scanner.Error!Tape {
-        return self.cached_tape orelse self.parse_and_cache_tape();
+        return self.cached_tape orelse self.parseAndCacheTape();
     }
 
     /// Just for testing, so we don't have to keep creating these.
@@ -83,7 +84,7 @@ pub const TapeTokenSource = struct {
         self.pos = 1;
     }
 
-    fn parse_and_cache_tape(self: *TapeTokenSource) std.json.Scanner.Error!Tape {
+    fn parseAndCacheTape(self: *TapeTokenSource) std.json.Scanner.Error!Tape {
         const has_user_provided_parser = self.parser != null;
         const options = TapeParser.Options{};
         const parser = if (self.parser) |p| p.inner else sj.sj_parser_new(options.max_capacity, options.max_depth);
@@ -111,8 +112,8 @@ pub const TapeTokenSource = struct {
     }
 
     const Tape = struct {
-        tape: []u64,
-        string_buf: [*]u8,
+        tape: []const u64,
+        string_buf: [*]const u8,
 
         fn init(c_tape: sj.sj_tape) Tape {
             return .{ .tape = c_tape.tape_ptr[0..c_tape.tape_len], .string_buf = c_tape.string_buf_ptr };
@@ -174,7 +175,7 @@ pub const TapeTokenSource = struct {
 
     /// See [std.json.Token](https://ziglang.org/documentation/master/std/#std.json.Scanner.Token) for documentation of this function.
     pub fn next(self: *TapeTokenSource) TapeTokenSource.NextError!std.json.Token {
-        return self.next_internal(.alloc_never, null) catch |e| {
+        return self.nextInternal(.alloc_never, null) catch |e| {
             switch (e) {
                 TapeTokenSource.AllocError.ValueTooLong => unreachable,
                 else => |other| return other,
@@ -183,21 +184,23 @@ pub const TapeTokenSource = struct {
     }
 
     /// See [std.json.Token](https://ziglang.org/documentation/master/std/#std.json.Scanner.Token) for documentation of `nextAlloc*()` function.
-    pub fn nextAllocMax(self: *TapeTokenSource, allocator: std.mem.Allocator, when: std.json.AllocWhen, max_value_len: usize) !Token {
+    pub fn nextAllocMax(self: *TapeTokenSource, allocator: std.mem.Allocator, when: std.json.AllocWhen, max_value_len: usize) TapeTokenSource.AllocError!Token {
         const nextAlloc: NextAllocStrategy = switch (when) {
             .alloc_if_needed => .{ .alloc_if_needed = allocator },
             .alloc_always => .{ .alloc_always = allocator },
         };
-        return self.next_internal(nextAlloc, max_value_len);
+        return self.nextInternal(nextAlloc, max_value_len);
     }
 
     pub fn deinit(self: *TapeTokenSource) void {
         if (self.cached_parser) |parser| {
             sj.sj_parser_free(parser);
         }
+        self.cached_parser = null;
+        self.cached_tape = null;
     }
 
-    fn next_internal(self: *TapeTokenSource, when: NextAllocStrategy, max_value_len: ?usize) TapeTokenSource.AllocError!std.json.Token {
+    fn nextInternal(self: *TapeTokenSource, when: NextAllocStrategy, max_value_len: ?usize) TapeTokenSource.AllocError!std.json.Token {
         const t = try self.tape();
         if (self.pos >= t.tape.len) {
             return Token.end_of_document;
