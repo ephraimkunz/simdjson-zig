@@ -67,7 +67,7 @@ test "parseFromSlice fails 2" {
         \\ value        }
     ;
     const result = parseFromSlice(u32, std.testing.allocator, source, .{});
-    try std.testing.expectError(std.json.Scanner.Error.UnexpectedEndOfInput, result);
+    try std.testing.expectError(std.json.Scanner.Error.SyntaxError, result);
 
     const stdlib_result = std.json.parseFromSlice(u32, std.testing.allocator, source, .{});
     try std.testing.expectError(std.json.ParseFromValueError.UnexpectedToken, stdlib_result);
@@ -200,17 +200,17 @@ test "parseFromSlice larger" {
 }
 
 test "malformed: empty input" {
-    try std.testing.expectError(std.json.Scanner.Error.UnexpectedEndOfInput, parseFromSlice(u32, std.testing.allocator, "", .{}));
+    try std.testing.expectError(std.json.Scanner.Error.SyntaxError, parseFromSlice(u32, std.testing.allocator, "", .{}));
     try std.testing.expectError(std.json.Scanner.Error.UnexpectedEndOfInput, std.json.parseFromSlice(u32, std.testing.allocator, "", .{}));
 }
 
 test "malformed: truncated array" {
-    try std.testing.expectError(std.json.Scanner.Error.UnexpectedEndOfInput, parseFromSlice([]u32, std.testing.allocator, "[1,", .{}));
+    try std.testing.expectError(std.json.Scanner.Error.SyntaxError, parseFromSlice([]u32, std.testing.allocator, "[1,", .{}));
     try std.testing.expectError(std.json.Scanner.Error.UnexpectedEndOfInput, std.json.parseFromSlice([]u32, std.testing.allocator, "[1,", .{}));
 }
 
 test "malformed: unclosed string" {
-    try std.testing.expectError(std.json.Scanner.Error.UnexpectedEndOfInput, parseFromSlice([]const u8, std.testing.allocator, "\"abc", .{}));
+    try std.testing.expectError(std.json.Scanner.Error.SyntaxError, parseFromSlice([]const u8, std.testing.allocator, "\"abc", .{}));
     try std.testing.expectError(std.json.Scanner.Error.UnexpectedEndOfInput, std.json.parseFromSlice([]const u8, std.testing.allocator, "\"abc", .{}));
 }
 
@@ -261,7 +261,7 @@ test "malformed: unbalanced nesting beyond depth limit" {
     const buf = try std.testing.allocator.alloc(u8, depth);
     defer std.testing.allocator.free(buf);
     @memset(buf, '[');
-    try std.testing.expectError(std.json.Scanner.Error.UnexpectedEndOfInput, parseFromSlice(u32, std.testing.allocator, buf, .{}));
+    try std.testing.expectError(std.json.Scanner.Error.SyntaxError, parseFromSlice(u32, std.testing.allocator, buf, .{}));
     try std.testing.expectError(std.json.ParseFromValueError.UnexpectedToken, std.json.parseFromSlice(u32, std.testing.allocator, buf, .{}));
 }
 
@@ -280,17 +280,17 @@ test "malformed: number error" {
 }
 
 test "malformed: incomplete null" {
-    try std.testing.expectError(std.json.Scanner.Error.UnexpectedEndOfInput, parseFromSlice(?u32, std.testing.allocator, "nul", .{}));
+    try std.testing.expectError(std.json.Scanner.Error.SyntaxError, parseFromSlice(?u32, std.testing.allocator, "nul", .{}));
     try std.testing.expectError(std.json.Scanner.Error.UnexpectedEndOfInput, std.json.parseFromSlice(?u32, std.testing.allocator, "nul", .{}));
 }
 
 test "malformed: incomplete true" {
-    try std.testing.expectError(std.json.Scanner.Error.UnexpectedEndOfInput, parseFromSlice(?u32, std.testing.allocator, "tru", .{}));
+    try std.testing.expectError(std.json.Scanner.Error.SyntaxError, parseFromSlice(?u32, std.testing.allocator, "tru", .{}));
     try std.testing.expectError(std.json.Scanner.Error.UnexpectedEndOfInput, std.json.parseFromSlice(?u32, std.testing.allocator, "tru", .{}));
 }
 
 test "malformed: incomplete false" {
-    try std.testing.expectError(std.json.Scanner.Error.UnexpectedEndOfInput, parseFromSlice(?u32, std.testing.allocator, "fals", .{}));
+    try std.testing.expectError(std.json.Scanner.Error.SyntaxError, parseFromSlice(?u32, std.testing.allocator, "fals", .{}));
     try std.testing.expectError(std.json.Scanner.Error.UnexpectedEndOfInput, std.json.parseFromSlice(?u32, std.testing.allocator, "fals", .{}));
 }
 

@@ -1,4 +1,4 @@
-pub const Error = error{
+pub const SimdjsonError = error{
     Capacity,
     MemAlloc,
     TapeError,
@@ -37,7 +37,7 @@ pub const Error = error{
 };
 
 /// Mirrors simdjson::error_code. Values must match the C++ header.
-const ErrorCode = enum(c_int) {
+const SimdjsonErrorCode = enum(c_int) {
     success = 0,
     capacity,
     memalloc,
@@ -75,8 +75,8 @@ const ErrorCode = enum(c_int) {
     _,
 };
 
-pub fn check(code: c_int) Error!void {
-    const error_code: ErrorCode = @fromBackingInt(@intCast(code));
+pub fn check(code: c_int) SimdjsonError!void {
+    const error_code: SimdjsonErrorCode = @fromBackingInt(@intCast(code));
     return switch (error_code) {
         .success => {},
         .capacity => error.Capacity,

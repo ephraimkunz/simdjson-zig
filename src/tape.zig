@@ -5,6 +5,15 @@ const err = @import("error.zig");
 const Token = std.json.Token;
 const TokenType = std.json.TokenType;
 
+pub const TapeParserError = error{
+    /// This parser can't support a document that big
+    Capacity,
+    /// Error allocating memory, most likely out of memory
+    MemAlloc,
+    /// simdjson returned an unexpected error
+    Unknown,
+};
+
 /// This is the lower-level parser that TapeTokenSource actually reads from. If you are parsing many JSON documents, it's more efficient to construct
 /// the parser once and reuse it for each parse by passing it to TapeTokenSource, than to reconstruct it each time.
 /// Using TapeParser with the TapeTokenSource also allows you to customize parser behavior with options.
@@ -31,15 +40,34 @@ pub const TapeParser = struct {
         zero_copy: bool = true,
     };
 
-    pub fn init(options: Options) std.mem.Allocator.Error!TapeParser {
+    pub fn init(options: Options) TapeParserError!TapeParser {
         var inner: ?*sj.sj_parser = null;
-        err.check(sj.sj_parser_new(options.max_capacity, options.max_depth, &inner)) catch return std.mem.Allocator.Error.OutOfMemory;
+        err.check(sj.sj_parser_new(options.max_capacity, options.max_depth, &inner)) catch |e| {
+            return switch (e) {
+                error.MemAlloc => TapeParserError.MemAlloc,
+                error.Capacity => TapeParserError.Capacity,
+                else => TapeParserError.Unknown,
+            };
+        };
         return .{ .inner = inner.?, .zero_copy = options.zero_copy };
     }
 
     pub fn deinit(self: TapeParser) void {
         sj.sj_parser_free(self.inner);
     }
+};
+
+pub const TapeTokenSourceError = error{
+    /// This parser can't support a document that big
+    Capacity,
+    /// The doocument exceeds the user-specified depth limitation
+    Depth,
+    /// Error allocating memory, most likely out of memory
+    MemAlloc,
+    /// Malformed JSON document, such as giving an input document that isn't JSON at all.
+    Syntax,
+    /// simdjson returned an unexpected error
+    Unknown,
 };
 
 // https://github.com/simdjson/simdjson/blob/master/doc/tape.md
@@ -53,12 +81,11 @@ pub const TapeTokenSource = struct {
     // The contract is that .next() can return a slice that will only last until it's called again.
     scratch: [30]u8 = undefined,
 
-    // Externally built, mutually exclusive with the lazily created cached_parser below. But still will use cached_tape that's lazily created.
+    parser_externally_provided: bool = false,
     parser: ?TapeParser = null,
 
     // Built once on demand, cached for future use until deinit.
     cached_tape: ?Tape = null,
-    cached_parser: ?*sj.sj_parser = null,
 
     pub const NextError = std.json.Scanner.NextError;
     pub const PeekError = std.json.Scanner.PeekError;
@@ -73,11 +100,33 @@ pub const TapeTokenSource = struct {
     /// When parsing multiple documents, it's more efficient to reuse the parser, creating a
     /// new TapeTokenSource for each document but passing in the same parser.
     pub fn initWithParser(s: []const u8, parser: TapeParser) TapeTokenSource {
-        return .{ .s = s, .parser = parser };
+        return .{ .s = s, .parser = parser, .parser_externally_provided = true };
+    }
+
+    /// Optionally call before using another method that will parse lazily on demand, to get the full error from a parse.
+    /// Otherwise, parsing happens lazily in the first method that needs parsed info, and is limited to the error return
+    /// set that that function returns. Those functions (peekNextTokenType, skipValue, etc) have error codes determined
+    /// by what the std.json functions expect, so that this token source can be a drop-in replacement for std.json.Scanner
+    /// and std.json.Reader.
+    pub fn ensureParse(self: *TapeTokenSource) TapeTokenSourceError!void {
+        if (self.parseAndCacheTape()) |_| {
+            return {};
+        } else |e| {
+            return e;
+        }
     }
 
     fn tape(self: *TapeTokenSource) std.json.Scanner.Error!Tape {
-        return self.cached_tape orelse self.parseAndCacheTape();
+        if (self.cached_tape) |t| {
+            return t;
+        } else {
+            return self.parseAndCacheTape() catch |e| {
+                return switch (e) {
+                    error.Depth, error.Capacity, error.MemAlloc, error.Syntax => std.json.Scanner.Error.SyntaxError,
+                    error.Unknown => std.json.Scanner.Error.UnexpectedEndOfInput,
+                };
+            };
+        }
     }
 
     /// Just for testing, so we don't have to keep creating these.
@@ -85,33 +134,32 @@ pub const TapeTokenSource = struct {
         self.pos = 1;
     }
 
-    fn parseAndCacheTape(self: *TapeTokenSource) std.json.Scanner.Error!Tape {
-        const has_user_provided_parser = self.parser != null;
-        const options = TapeParser.Options{};
-        var inner: ?*sj.sj_parser = null;
-        if (self.parser) |p| {
-            inner = p.inner;
-        } else {
-            err.check(sj.sj_parser_new(options.max_capacity, options.max_depth, &inner)) catch return std.json.Scanner.Error.UnexpectedEndOfInput;
-        }
-        const parser = inner.?;
-        const zero_copy = if (self.parser) |p| p.zero_copy else options.zero_copy;
-
-        if (!has_user_provided_parser) {
-            self.cached_parser = parser;
+    fn parseAndCacheTape(self: *TapeTokenSource) TapeTokenSourceError!Tape {
+        if (self.parser == null) {
+            self.parser = try TapeParser.init(.{});
         }
 
-        // Ideally we'd like to return a richer error set here but we're limited by the minimal
-        // error set of all the places tape() is called, since we want to do this parsing on demand.
-        err.check(sj.sj_parser_parse(parser, self.s.ptr, self.s.len, zero_copy)) catch |e| {
-            switch (e) {
-                err.Error.TapeError, err.Error.UnclosedString, err.Error.Empty, err.Error.NAtomError, err.Error.TAtomError, err.Error.FAtomError => return std.json.Scanner.Error.UnexpectedEndOfInput,
-                err.Error.Utf8Error, err.Error.NumberError, err.Error.UnescapedChars, err.Error.StringError, err.Error.DepthError, err.Error.Capacity => return std.json.Scanner.Error.SyntaxError,
-                // The above were explicitly hit and mapped to the closest error that std.json uses. Below were never hit and are caught for safety.
-                else => return std.json.Scanner.Error.SyntaxError,
-            }
+        err.check(sj.sj_parser_parse(self.parser.?.inner, self.s.ptr, self.s.len, self.parser.?.zero_copy)) catch |e| {
+            return switch (e) {
+                error.Capacity => TapeTokenSourceError.Capacity,
+                error.DepthError => TapeTokenSourceError.Depth,
+                error.MemAlloc => TapeTokenSourceError.MemAlloc,
+                error.TapeError,
+                error.UnclosedString,
+                error.Empty,
+                error.NAtomError,
+                error.TAtomError,
+                error.FAtomError,
+                error.Utf8Error,
+                error.NumberError,
+                error.UnescapedChars,
+                error.StringError,
+                => TapeTokenSourceError.Syntax,
+                // The above were explicitly hit and mapped to the closest error. Below were never hit and are caught for safety.
+                else => TapeTokenSourceError.Unknown,
+            };
         };
-        const c_tape = sj.sj_parser_get_tape_view(parser);
+        const c_tape = sj.sj_parser_get_tape_view(self.parser.?.inner);
         const t = Tape.init(c_tape);
         self.cached_tape = t;
 
@@ -184,7 +232,7 @@ pub const TapeTokenSource = struct {
     pub fn next(self: *TapeTokenSource) TapeTokenSource.NextError!std.json.Token {
         return self.nextInternal(.alloc_never, null) catch |e| {
             switch (e) {
-                TapeTokenSource.AllocError.ValueTooLong => unreachable,
+                TapeTokenSource.AllocError.ValueTooLong => unreachable, // max_value_len is null, which is the only way to reach this.
                 else => |other| return other,
             }
         };
@@ -200,8 +248,10 @@ pub const TapeTokenSource = struct {
     }
 
     pub fn deinit(self: *TapeTokenSource) void {
-        if (self.cached_parser) |parser| {
-            sj.sj_parser_free(parser);
+        if (!self.parser_externally_provided) {
+            if (self.parser) |p| {
+                p.deinit();
+            }
         }
     }
 
@@ -424,11 +474,11 @@ test "inner parse" {
 test "token source lazily parses" {
     var scanner = TapeTokenSource.init("1234");
     defer scanner.deinit();
-    try std.testing.expectEqual(null, scanner.cached_parser);
+    try std.testing.expectEqual(null, scanner.parser);
     try std.testing.expectEqual(null, scanner.cached_tape);
 
     _ = try scanner.next();
-    try std.testing.expect(scanner.cached_parser != null);
+    try std.testing.expect(scanner.parser != null);
     try std.testing.expect(scanner.cached_tape != null);
 }
 
@@ -490,9 +540,14 @@ test "max capacity" {
 }
 
 test "zero max_depth" {
-    try std.testing.expectError(std.mem.Allocator.Error.OutOfMemory, TapeParser.init(.{ .max_depth = 0 }));
+    try std.testing.expectError(TapeParserError.Capacity, TapeParser.init(.{ .max_depth = 0 }));
 }
 
 test "large max_depth" {
-    try std.testing.expectError(std.mem.Allocator.Error.OutOfMemory, TapeParser.init(.{ .max_depth = 0xFFFFFFFF }));
+    try std.testing.expectError(TapeParserError.Capacity, TapeParser.init(.{ .max_depth = 0xFFFFFFFF }));
+}
+
+test "ensure parse" {
+    var source = TapeTokenSource.init("s: []const u8");
+    try std.testing.expectError(TapeTokenSourceError.Syntax, source.ensureParse());
 }
