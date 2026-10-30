@@ -553,3 +553,54 @@ fn array_hash_maps_equal(
 
     return true;
 }
+
+// https://ziggit.dev/t/how-to-parse-arbitrary-json-data/1218/2
+test "drop in for std.json 1" {
+    const local = struct {
+        fn parseAndVerify(uses_stdlib: bool) !void {
+            const json_string =
+                \\ {
+                \\   "a": true,
+                \\   "b": 5,
+                \\   "c": "okay"
+                \\ }
+            ;
+
+            const parsed = if (uses_stdlib) try std.json.parseFromSlice(std.json.Value, std.testing.allocator, json_string, .{}) else try parseFromSlice(std.json.Value, std.testing.allocator, json_string, .{});
+            defer parsed.deinit();
+
+            const a = parsed.value.object.get("a").?.bool;
+            const b = parsed.value.object.get("b").?.integer;
+            const c = parsed.value.object.get("c").?.string;
+            try std.testing.expectEqual(true, a);
+            try std.testing.expect(b == 5);
+            try std.testing.expectEqualStrings("okay", c);
+        }
+    };
+
+    try local.parseAndVerify(true);
+    try local.parseAndVerify(false);
+}
+
+// https://medium.com/@mikecode/zig-how-to-parse-json-68f298e5e295
+test "drop in for std.json 2" {
+    const local = struct {
+        fn parseAndVerify(uses_stdlib: bool) !void {
+            const Person2 = struct { name: []const u8, age: i32 };
+
+            const json = "{\"name\": \"jim\" , \"age\": 20}";
+            const allocator = std.testing.allocator;
+            const parsed = if (uses_stdlib) try std.json.parseFromSlice(Person2, allocator, json, .{}) else try parseFromSlice(Person2, allocator, json, .{});
+
+            const person = parsed.value;
+            defer parsed.deinit();
+
+            const s = try allocator.print("name: {s} , age: {}\n", .{ person.name, person.age });
+            defer allocator.free(s);
+            try std.testing.expectEqualStrings("name: jim , age: 20\n", s);
+        }
+    };
+
+    try local.parseAndVerify(true);
+    try local.parseAndVerify(false);
+}
