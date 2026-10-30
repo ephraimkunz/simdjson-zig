@@ -63,8 +63,6 @@ very similar to the JSON APIs in the standard library. This allows us to reuse p
 
 **TODO**: 
 * benchmark vs yyjson / std.json
-* A comptime struct decoder that reads i64/u64/f64 straight from the tape?
-
 * Update simdjson readme with a reference.
 * Reviews from Ziggit.
 * Test if it's really drop in by adding example programs.
@@ -72,7 +70,6 @@ very similar to the JSON APIs in the standard library. This allows us to reuse p
 * Finish readme
 * Test for common mistakes, like reusing the token multiple times, or accessing memory from the scanner from the previous run after the scanner has been used, threading, zero copy ownership, add aliasing guard?
 * Benchmark large, small, mmap, zero copy.
-* Pub errors?
 
 I’d put it in three places: the zero_copy option, a “Lifetimes” section on TapeTokenSource, and a short example in the README. The key facts to state are who must keep what alive, and until when.
 

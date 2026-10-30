@@ -8,13 +8,29 @@ pub fn main(init: std.process.Init) !u8 {
 
     const args = try init.minimal.args.toSlice(allocator);
     defer allocator.free(args);
-    if (args.len != 2) {
+
+    if (args.len < 2 or args.len > 3) {
         const exe_name = if (args.len >= 1) args[0] else "simdjson";
         try usage(io, exe_name);
         return 1;
     }
 
-    const subcommand = std.meta.stringToEnum(Subcommand.Type, args[1]) orelse {
+    var use_std_lib = false;
+    var subcommand_index: usize = 1;
+
+    if (args.len == 3) {
+        if (std.mem.eql(u8, args[1], "--use-std-lib")) {
+            use_std_lib = true;
+            subcommand_index = 2;
+        } else {
+            var writer = Io.File.stderr().writer(io, &.{});
+            const stderr = &writer.interface;
+            try stderr.print("\"{s}\" is not a valid option.\n\nOptions are:\n  --use-std-lib: Use std.json for parsing rather than simdjson.\n", .{args[1]});
+            return 1;
+        }
+    }
+
+    const subcommand = std.meta.stringToEnum(Subcommand.Type, args[subcommand_index]) orelse {
         var writer = Io.File.stderr().writer(io, &.{});
         const stderr = &writer.interface;
         try stderr.print("\"{s}\" is not a valid subcommand.\n\nOptions are:\n{s}\n", .{ args[1], Subcommands.usage("  ") });
@@ -24,6 +40,7 @@ pub fn main(init: std.process.Init) !u8 {
 
     var buf: [4096]u8 = undefined;
     var reader = std.Io.File.stdin().reader(io, &buf);
+    // var reader = (try std.Io.Dir.cwd().openFile(io, "data_1gb.json", .{ .mode = .read_only })).reader(io, &buf);
     const stdin = &reader.interface;
     const input = try stdin.readAllocShort(allocator, 2_000_000_000);
     defer allocator.free(input);
@@ -31,7 +48,13 @@ pub fn main(init: std.process.Init) !u8 {
 
     switch (subcommand) {
         .validate => {
-            const is_valid = try sj.validate(input);
+            var is_valid: bool = undefined;
+            if (use_std_lib) {
+                is_valid = try std.json.Scanner.validate(allocator, input);
+            } else {
+                is_valid = try sj.validate(input);
+            }
+
             if (is_valid) {
                 try Io.File.stdout().writeStreamingAll(io, "true\n");
                 return 0;
@@ -41,9 +64,19 @@ pub fn main(init: std.process.Init) !u8 {
             }
         },
         .minify => {
+            var minified: []u8 = undefined;
             const out_buf = try allocator.alloc(u8, input.len);
             defer allocator.free(out_buf);
-            const minified = try sj.minify(input, out_buf);
+            if (use_std_lib) {
+                const parsed = try std.json.parseFromSlice(std.json.Value, allocator, input, .{ .duplicate_field_behavior = .use_last, .parse_numbers = false });
+                defer parsed.deinit();
+                var writer = std.Io.Writer.fixed(out_buf);
+                try std.json.Stringify.value(parsed.value, .{ .whitespace = .minified }, &writer);
+                minified = writer.buffered();
+            } else {
+                minified = try sj.minify(input, out_buf);
+            }
+
             try Io.File.stdout().writeStreamingAll(io, minified);
             try Io.File.stdout().writeStreamingAll(io, "\n");
             return 0;
@@ -68,7 +101,7 @@ fn usage(io: Io, exe_name: []const u8) !void {
     const subcommands = Subcommands.usage("  ");
     var writer = Io.File.stderr().writer(io, &.{});
     const stderr = &writer.interface;
-    try stderr.print("Usage: {s} <subcommand>\n\nSubcommands:\n{s}\n\nAll subcommands take input from stdin (reading until EOF), and write output and errors to stdout and stderr, respectively.\nRedirect from these as needed.\n", .{ exe_name, subcommands });
+    try stderr.print("Usage: {s} [options] <subcommand>\n\nOptions:\n  --use-std-lib: Use std.json for parsing rather than simdjson.\n\nSubcommands:\n{s}\n\nAll subcommands take input from stdin (reading until EOF), and write output and errors to stdout and stderr, respectively.\nRedirect from these as needed.\n", .{ exe_name, subcommands });
 }
 
 const Subcommand = struct {
