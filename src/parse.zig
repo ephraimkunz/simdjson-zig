@@ -521,3 +521,35 @@ test "parse value" {
     const result = try std.json.Value.jsonParse(allocator, &tapeTokenSource, .{ .max_value_len = 50 });
     try std.testing.expectEqualDeep(std.json.Value{ .integer = 100 }, result);
 }
+
+test "parse array_hash_map" {
+    const ahm = std.json.ArrayHashMap([]const u8);
+    var source = TapeTokenSource.init("{\"test\": \"one\", \"test1\": \"two\", \"test2\": \"three\"}");
+    var parsed = try ahm.jsonParse(std.testing.allocator, &source, .{ .allocate = .alloc_if_needed, .max_value_len = std.json.default_max_value_len });
+    defer parsed.deinit(std.testing.allocator);
+
+    var expected = try std.array_hash_map.String([]const u8).init(std.testing.allocator, &.{ "test", "test1", "test2" }, &.{ "one", "two", "three" });
+    defer expected.deinit(std.testing.allocator);
+    try std.testing.expect(try array_hash_maps_equal(expected, parsed.map));
+}
+
+fn array_hash_maps_equal(
+    mapA: anytype,
+    mapB: anytype,
+) !bool {
+    if (mapA.count() != mapB.count()) {
+        return false;
+    }
+
+    var it = mapA.iterator();
+    while (it.next()) |entry| {
+        const key = entry.key_ptr.*;
+        const valA = entry.value_ptr.*;
+        const valB = mapB.get(key) orelse return false;
+        if (!std.mem.eql(u8, valA, valB)) {
+            return false;
+        }
+    }
+
+    return true;
+}

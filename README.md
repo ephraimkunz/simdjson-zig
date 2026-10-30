@@ -61,11 +61,9 @@ This package exposes that tape through a C wrapper around the original simdjson 
 very similar to the JSON APIs in the standard library. This allows us to reuse parsing code in the std library and maintain familiar APIs, but all on top of a simd-accelerated tape backend.
 
 
-**TODO**: benchmark vs yyjson / std.json, expand API:
-* Load many?, parse many
-* Finish implementing drop-in std.json support. test with jsonparse
-* Prettify? write out in general?
-* A tape to std.json.Value converter, and a comptime struct decoder that reads i64/u64/f64 straight from the tape?
+**TODO**: 
+* benchmark vs yyjson / std.json
+* A comptime struct decoder that reads i64/u64/f64 straight from the tape?
 
 * Update simdjson readme with a reference.
 * Reviews from Ziggit.

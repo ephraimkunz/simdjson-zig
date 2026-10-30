@@ -240,11 +240,18 @@ pub const TapeTokenSource = struct {
 
     /// See [std.json.Token](https://ziglang.org/documentation/master/std/#std.json.Scanner.Token) for documentation of `nextAlloc*()` function.
     pub fn nextAllocMax(self: *TapeTokenSource, allocator: std.mem.Allocator, when: std.json.AllocWhen, max_value_len: usize) TapeTokenSource.AllocError!Token {
-        const nextAlloc: NextAllocStrategy = switch (when) {
+        const nextAllocStrategy: NextAllocStrategy = switch (when) {
             .alloc_if_needed => .{ .alloc_if_needed = allocator },
             .alloc_always => .{ .alloc_always = allocator },
         };
-        return self.nextInternal(nextAlloc, max_value_len);
+        return self.nextInternal(nextAllocStrategy, max_value_len);
+    }
+
+    /// Equivalent to `nextAllocMax(allocator, when, default_max_value_len);`
+    /// This function is only available after `endInput()` (or `initCompleteInput()`) has been called.
+    /// See also `std.json.Token` for documentation of `nextAlloc*()` function behavior.
+    pub fn nextAlloc(self: *@This(), allocator: std.mem.Allocator, when: std.json.AllocWhen) AllocError!Token {
+        return self.nextAllocMax(allocator, when, std.json.default_max_value_len);
     }
 
     pub fn deinit(self: *TapeTokenSource) void {

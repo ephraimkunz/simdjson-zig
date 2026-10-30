@@ -33,4 +33,6 @@ test {
     _ = @import("parse.zig");
     _ = @import("minify.zig");
     _ = @import("validate.zig");
+    _ = @import("test.zig");
+    _ = @import("JSONTestSuite_test.zig");
 }
