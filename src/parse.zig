@@ -557,7 +557,7 @@ fn array_hash_maps_equal(
 // https://ziggit.dev/t/how-to-parse-arbitrary-json-data/1218/2
 test "drop in for std.json 1" {
     const local = struct {
-        fn parseAndVerify(uses_stdlib: bool) !void {
+        fn parseAndVerify(comptime uses_stdlib: bool) !void {
             const json_string =
                 \\ {
                 \\   "a": true,
@@ -566,7 +566,8 @@ test "drop in for std.json 1" {
                 \\ }
             ;
 
-            const parsed = if (uses_stdlib) try std.json.parseFromSlice(std.json.Value, std.testing.allocator, json_string, .{}) else try parseFromSlice(std.json.Value, std.testing.allocator, json_string, .{});
+            const parse = if (uses_stdlib) std.json.parseFromSlice else parseFromSlice;
+            const parsed = try parse(std.json.Value, std.testing.allocator, json_string, .{});
             defer parsed.deinit();
 
             const a = parsed.value.object.get("a").?.bool;
@@ -585,12 +586,13 @@ test "drop in for std.json 1" {
 // https://medium.com/@mikecode/zig-how-to-parse-json-68f298e5e295
 test "drop in for std.json 2" {
     const local = struct {
-        fn parseAndVerify(uses_stdlib: bool) !void {
+        fn parseAndVerify(comptime uses_stdlib: bool) !void {
             const Person2 = struct { name: []const u8, age: i32 };
 
             const json = "{\"name\": \"jim\" , \"age\": 20}";
             const allocator = std.testing.allocator;
-            const parsed = if (uses_stdlib) try std.json.parseFromSlice(Person2, allocator, json, .{}) else try parseFromSlice(Person2, allocator, json, .{});
+            const parse = if (uses_stdlib) std.json.parseFromSlice else parseFromSlice;
+            const parsed = try parse(Person2, allocator, json, .{});
 
             const person = parsed.value;
             defer parsed.deinit();
@@ -598,6 +600,112 @@ test "drop in for std.json 2" {
             const s = try allocator.print("name: {s} , age: {}\n", .{ person.name, person.age });
             defer allocator.free(s);
             try std.testing.expectEqualStrings("name: jim , age: 20\n", s);
+        }
+    };
+
+    try local.parseAndVerify(true);
+    try local.parseAndVerify(false);
+}
+
+test "drop in for std.json complex" {
+    const local = struct {
+        const Status = enum { pending, shipped, delivered };
+        const Item = struct { sku: []const u8, qty: u32, price: f64, tags: []const []const u8 };
+        const Payment = union(enum) {
+            card: struct { last4: []const u8, brand: []const u8 },
+            bank: struct { iban: []const u8 },
+            cash: bool,
+        };
+        const Order = struct {
+            id: u64,
+            status: Status,
+            customer: struct { name: []const u8, email: ?[]const u8, zip: ?[]const u8 = null },
+            items: []const Item,
+            payment: Payment,
+            dims: [3]f32,
+            priority: i8 = 0,
+            attributes: std.json.ArrayHashMap([]const u8),
+            meta: std.json.Value,
+        };
+
+        const json =
+            \\{
+            \\  "id": 18446744073709551615,
+            \\  "status": "shipped",
+            \\  "customer": { "name": "Zo\u00eb \"Z\"\tO'Brien \ud83d\ude00", "email": null, "zip": "84601" },
+            \\  "items": [
+            \\    { "sku": "A-100", "qty": 3, "price": 19.99, "tags": ["new", "sale"] },
+            \\    { "sku": "B-200", "qty": 1, "price": 1.5e2, "tags": [] }
+            \\  ],
+            \\  "payment": { "card": { "last4": "4242", "brand": "visa" } },
+            \\  "dims": [1.5, 2.25, 3],
+            \\  "priority": -5,
+            \\  "attributes": { "color": "red", "size": "L" },
+            \\  "meta": { "gift": true, "wrap": { "layers": [1, 2, 3] }, "nothing": null },
+            \\  "ignored": { "a": [1, 2, { "b": null }] }
+            \\}
+        ;
+
+        fn parseAndVerify(comptime uses_stdlib: bool) !void {
+            const allocator = std.testing.allocator;
+            const parse = if (uses_stdlib) std.json.parseFromSlice else parseFromSlice;
+
+            const parsed = try parse(Order, allocator, json, .{ .ignore_unknown_fields = true });
+            defer parsed.deinit();
+            const o = parsed.value;
+
+            try std.testing.expectEqual(@as(u64, std.math.maxInt(u64)), o.id);
+            try std.testing.expectEqual(Status.shipped, o.status);
+            try std.testing.expectEqualStrings("Zoë \"Z\"\tO'Brien 😀", o.customer.name);
+            try std.testing.expect(o.customer.email == null);
+            try std.testing.expectEqualStrings("84601", o.customer.zip.?);
+
+            try std.testing.expectEqual(@as(usize, 2), o.items.len);
+            try std.testing.expectEqualStrings("A-100", o.items[0].sku);
+            try std.testing.expectApproxEqAbs(@as(f64, 19.99), o.items[0].price, 1e-9);
+            try std.testing.expectEqualStrings("sale", o.items[0].tags[1]);
+            try std.testing.expectApproxEqAbs(@as(f64, 150.0), o.items[1].price, 1e-9);
+            try std.testing.expectEqual(@as(usize, 0), o.items[1].tags.len);
+
+            try std.testing.expectEqualStrings("4242", o.payment.card.last4);
+            try std.testing.expectEqualSlices(f32, &.{ 1.5, 2.25, 3.0 }, &o.dims);
+            try std.testing.expectEqual(@as(i8, -5), o.priority);
+            try std.testing.expectEqualStrings("L", o.attributes.map.get("size").?);
+
+            try std.testing.expectEqual(true, o.meta.object.get("gift").?.bool);
+            try std.testing.expect(o.meta.object.get("nothing").? == .null);
+            const layers = o.meta.object.get("wrap").?.object.get("layers").?.array.items;
+            try std.testing.expectEqual(@as(i64, 3), layers[2].integer);
+
+            const s = try std.fmt.allocPrint(allocator, "{d}|{s}|{s}|{d}", .{ o.id, @tagName(o.status), o.items[0].sku, o.priority });
+            defer allocator.free(s);
+            try std.testing.expectEqualStrings("18446744073709551615|shipped|A-100|-5", s);
+        }
+    };
+
+    try local.parseAndVerify(true);
+    try local.parseAndVerify(false);
+}
+
+test "drop in for std.json errors" {
+    const local = struct {
+        const P = struct { name: []const u8, age: u8 };
+
+        fn parseAndVerify(comptime uses_stdlib: bool) !void {
+            const allocator = std.testing.allocator;
+            const parse = if (uses_stdlib) std.json.parseFromSlice else parseFromSlice;
+
+            try std.testing.expectError(error.MissingField, parse(P, allocator, "{\"name\":\"a\"}", .{}));
+            try std.testing.expectError(error.UnknownField, parse(P, allocator, "{\"name\":\"a\",\"age\":1,\"x\":2}", .{}));
+            try std.testing.expectError(error.DuplicateField, parse(P, allocator, "{\"name\":\"a\",\"name\":\"b\",\"age\":1}", .{}));
+
+            try std.testing.expectError(error.InvalidCharacter, parse(P, allocator, "{\"name\":\"a\",\"age\":\"x\"}", .{}));
+
+            try std.testing.expectError(error.Overflow, parse(P, allocator, "{\"name\":\"a\",\"age\":300}", .{}));
+            try std.testing.expectError(error.SyntaxError, parse(P, allocator, "{\"name\":\"a\",\"age\":}", .{}));
+
+            const expected_err = if (uses_stdlib) error.UnexpectedEndOfInput else error.SyntaxError;
+            try std.testing.expectError(expected_err, parse(P, allocator, "{\"name\":\"a\",\"age\":1", .{}));
         }
     };
 
