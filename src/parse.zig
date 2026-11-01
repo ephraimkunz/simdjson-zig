@@ -485,11 +485,11 @@ test "parseFromTokenSource" {
         &tapeTokenSource,
         .{ .allocate = .alloc_if_needed },
     );
+    defer a.deinit();
 
     // a is tied to the lifetime of tapeTokenSource and becomes invalid if the token source goes away.
     // If this is not desired, the options above should specify .allocate_always for the allocate parameter.
     try std.testing.expectEqualSlices(u8, "food", a.value.dinner);
-    defer a.deinit();
 }
 
 test "parseFromTokenSourceLeaky" {
