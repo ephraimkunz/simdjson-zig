@@ -2,8 +2,12 @@ const std = @import("std");
 const TapeTokenSource = @import("tape.zig").TapeTokenSource;
 
 /// This function matches the prototype of the [std.json.parseFromSlice](https://ziglang.org/documentation/master/std/#std.json.static.parseFromSlice) function,
-/// allowing that function to be replaced seamlessly by this one. Note that this function uses more memory as it
-/// parses the entire JSON file in memory up front, instead of walking it on demand.
+/// allowing that function to be replaced seamlessly by this one.
+///
+/// Parses the json document from `s` and returns the result packaged in a `std.json.Parsed`.
+/// You must call `deinit()` of the returned object to clean up allocated resources.
+/// If you are using a `std.heap.ArenaAllocator` or similar, consider calling `parseFromSliceLeaky` instead.
+/// Note that `error.BufferUnderrun` is not actually possible to return from this function.
 pub fn parseFromSlice(
     comptime T: type,
     allocator: std.mem.Allocator,
@@ -26,7 +30,12 @@ pub fn parseFromSlice(
     );
 }
 
-/// Parses the json document from s and returns the result. Allocations made during this operation are not carefully tracked and may not be possible to individually clean up. It is recommended to use a std.heap.ArenaAllocator or similar.
+/// This function matches the prototype of the [std.json.parseFromSliceLeaky](https://ziglang.org/documentation/master/std/#std.json.static.parseFromSliceLeaky) function,
+/// allowing that function to be replaced seamlessly by this one.
+///
+/// Parses the json document from `s` and returns the result.
+/// Allocations made during this operation are not carefully tracked and may not be possible to individually clean up.
+/// It is recommended to use a `std.heap.ArenaAllocator` or similar.
 pub fn parseFromSliceLeaky(
     comptime T: type,
     allocator: std.mem.Allocator,

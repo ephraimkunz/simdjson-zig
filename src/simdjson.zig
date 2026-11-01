@@ -24,7 +24,6 @@ pub const TapeParser = @import("tape.zig").TapeParser;
 pub const MinifyError = @import("minify.zig").MinifyError;
 pub const minify = @import("minify.zig").minify;
 
-pub const ValidateError = @import("validate.zig").ValidateError;
 pub const validateUTF8 = @import("validate.zig").validateUTF8;
 pub const validate = @import("validate.zig").validate;
 

@@ -25,7 +25,7 @@ pub const TapeParser = struct {
     pub const Options = struct {
         /// This is the largest document this parser can automatically support.
         /// The parser may reallocate internal buffers as needed up to this amount as documents are passed to it.
-        /// There's an implementation-defined limit to the smallest this can get which will be set if you set too small.
+        /// There's an implementation-defined limit to the smallest this can get which will be used if you set too small.
         /// The default used here is what the simdjson library uses as a default.
         max_capacity: usize = 0xFFFFFFFF,
 
@@ -37,6 +37,7 @@ pub const TapeParser = struct {
         /// padded internally when parsing. Otherwise, performance may be faster but may use more memory. Speed and memory
         /// use depend on the size of the file being parsed, and sometimes zero_copy may be preferable.
         /// See https://github.com/simdjson/simdjson/blob/master/doc/dom.md#parsing-without-padding
+        /// https://simdjson.github.io/simdjson/classsimdjson_1_1dom_1_1parser.html#a8a27c6955bc5b542890b2c4825ee917c
         zero_copy: bool = true,
     };
 

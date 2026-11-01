@@ -49,7 +49,7 @@ test "n_object_closed_missing_value" {
 }
 
 fn roundTrip(s: []const u8) !void {
-    try testing.expect(try validate(s));
+    try testing.expect(try validate(std.testing.allocator, s));
 
     var parsed = try parseFromSlice(Value, testing.allocator, s, .{});
     defer parsed.deinit();

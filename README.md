@@ -63,15 +63,23 @@ very similar to the JSON APIs in the standard library. This allows us to reuse p
 
 **TODO**: 
 * benchmark vs yyjson / std.json
-* Update simdjson readme with a reference.
-* Reviews from Ziggit.
-* Test if it's really drop in by adding example programs.
-* Benchmarks sections showing speed vs c++ impl direct and std.json 
-* Finish readme
-* Test for common mistakes, like reusing the token multiple times, or accessing memory from the scanner from the previous run after the scanner has been used, threading, zero copy ownership, add aliasing guard?
 * Benchmark large, small, mmap, zero copy.
+* Benchmarks sections showing speed vs c++ impl direct and std.json 
 
-I’d put it in three places: the zero_copy option, a “Lifetimes” section on TapeTokenSource, and a short example in the README. The key facts to state are who must keep what alive, and until when.
+* Update simdjson readme with a reference.
+* Finish readme
+* Reviews from Ziggit.
+
+* Test for common mistakes, like reusing the token multiple times, or accessing memory from the scanner from the previous run after the scanner has been used, threading, zero copy ownership, add aliasing guard?
+* Doc memory usage:  Note that this simdjson functions uses more memory as it parses the entire JSON file in memory up front, instead of walking it on demand.
+* Update docs: I’d put it in three places: the zero_copy option, a “Lifetimes” section on TapeTokenSource, and a short example in the README. The key facts to state are who must keep what alive, and until when.
+
+Lifetime: when using zero copy:
+Lifetime is tied to the parser instance AND the input if alloc_if_needed. If alloc_always is passed, lifetime is tied to the arena returned by std.json.Parsed. 
+
+Otherwise:
+Lifetime is tied to the parser instance if alloc_if_needed, not the input. This differs from std.json's lifetime, which is tied to the input if alloc_if_needed.
+parseFromSlice internally uses a parser instance, so it forces alloc_always. You can get around this by using parseFromTokenSource with your own parser + alloc_if_needed.
 
 On the option:
 
@@ -98,15 +106,12 @@ zig
 ///   the end of parsing, not just during init().
 /// - With zero_copy, keep the input alive until you are done with the token source.
 ///   This is simdjson's own rule for parse_unpadded.
-/// - The input is only read, never written, and parsing never reads past its end.
-///   A bad lifetime is a use-after-free, not an out-of-bounds read.
 /// - Tokens never point into your input. Strings from next() (and from nextAlloc* with
 ///   .alloc_if_needed) point into the parser's buffer, valid until that parser parses
 ///   another document or is freed. Numbers are formatted into a scratch buffer and are
 ///   valid only until the next call.
 /// - Values produced by std.json with .alloc_always own their memory and outlive both
 ///   the input and the parser.
-/// - If the input comes from mmap, truncating the file during parsing can raise SIGBUS.
 
 In the README, with one example of each:
 

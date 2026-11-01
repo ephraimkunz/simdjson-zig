@@ -52,7 +52,7 @@ pub fn main(init: std.process.Init) !u8 {
             if (use_std_lib) {
                 is_valid = try std.json.Scanner.validate(allocator, input);
             } else {
-                is_valid = try sj.validate(input);
+                is_valid = try sj.validate(allocator, input);
             }
 
             if (is_valid) {

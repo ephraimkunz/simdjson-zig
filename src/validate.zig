@@ -3,24 +3,26 @@ const sj = @import("simdjson_c");
 const TapeParser = @import("tape.zig").TapeParser;
 const err = @import("error.zig");
 
-pub const ValidateError = error{
-    /// This parser can't support a document that big
-    Capacity,
-    /// Error allocating memory, most likely out of memory
-    MemAlloc,
-    /// simdjson returned an unexpected error
-    Unknown,
-};
-
 /// The UTF-8 validation function merely checks that the input is valid UTF-8: it works with strings in general, not just JSON strings.
 pub fn validateUTF8(s: []const u8) bool {
     return sj.sj_validate_utf8(s.ptr, s.len);
 }
 
-/// Scan the input and check for malformed JSON. Returns an error if one occurs when trying to create a parser, otherwise
-/// true or false representing if the input is valid JSON.
-pub fn validate(s: []const u8) ValidateError!bool {
-    const parser = try TapeParser.init(.{});
+/// This function matches the prototype of the [std.json.validate](https://ziglang.org/documentation/master/std/#std.json.Scanner.validate) function,
+/// allowing that function to be replaced seamlessly by this one.
+///
+/// Scan the input and check for malformed JSON.
+/// On `SyntaxError` or `UnexpectedEndOfInput`, returns `false`.
+/// Returns any errors from the allocator as-is, which is unlikely,
+/// but can be caused by extreme nesting depth in the input.
+pub fn validate(allocator: std.mem.Allocator, s: []const u8) std.mem.Allocator.Error!bool {
+    _ = allocator;
+    const parser = TapeParser.init(.{}) catch |e| {
+        switch (e) {
+            error.MemAlloc, error.Capacity => return std.mem.Allocator.Error.OutOfMemory,
+            else => return false,
+        }
+    };
     defer parser.deinit();
     err.check(sj.sj_parser_parse(parser.inner, s.ptr, s.len, parser.zero_copy)) catch return false;
     return true;
@@ -36,10 +38,27 @@ test "validate_utf8 invalid" {
 
 test validate {
     const bad_json = "{{5}}";
-    try std.testing.expect(!try validate(bad_json));
+    try std.testing.expect(!try validate(std.testing.allocator, bad_json));
 
     const good_json = "{\"a\": {\"good\": 5.34}}";
-    try std.testing.expect(try validate(good_json));
+    try std.testing.expect(try validate(std.testing.allocator, good_json));
+}
+
+test "drop-in validate" {
+    const local = struct {
+        const bad_json = "{{5}}";
+        const good_json = "{\"a\": {\"good\": 5.34}}";
+
+        fn validateAndVerify(comptime uses_stdlib: bool) !void {
+            const v = if (uses_stdlib) std.json.validate else validate;
+
+            try std.testing.expect(!try v(std.testing.allocator, bad_json));
+            try std.testing.expect(try v(std.testing.allocator, good_json));
+        }
+    };
+
+    try local.validateAndVerify(true);
+    try local.validateAndVerify(false);
 }
 
 test "fuzz validateUTF8" {
