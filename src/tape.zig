@@ -15,7 +15,7 @@ pub const TapeParserError = error{
 };
 
 /// This is the lower-level parser that TapeTokenSource actually reads from. If you are parsing many JSON documents, it's more efficient to construct
-/// the parser once and reuse it for each parse by passing it to TapeTokenSource, than to reconstruct it each time.
+/// the parser once and reuse it for each parse by passing it to TapeTokenSource then to reconstruct it each time.
 /// Using TapeParser with the TapeTokenSource also allows you to customize parser behavior with options.
 /// Using TapeTokenSource without an explicit TapeParser is the same as using it with one with default Options, and no reuse-between calls.
 pub const TapeParser = struct {
@@ -23,9 +23,9 @@ pub const TapeParser = struct {
     zero_copy: bool,
 
     pub const Options = struct {
-        /// This is the largest document this parser can automatically support.
+        /// The size, in bytes, of largest document this parser can support.
         /// The parser may reallocate internal buffers as needed up to this amount as documents are passed to it.
-        /// There's an implementation-defined limit to the smallest this can get which will be used if you set too small.
+        /// There's an implementation-defined limit of the smallest this can get which will be used if you set this too small.
         /// The default used here is what the simdjson library uses as a default.
         max_capacity: usize = 0xFFFFFFFF,
 
@@ -249,7 +249,6 @@ pub const TapeTokenSource = struct {
     }
 
     /// Equivalent to `nextAllocMax(allocator, when, default_max_value_len);`
-    /// This function is only available after `endInput()` (or `initCompleteInput()`) has been called.
     /// See also `std.json.Token` for documentation of `nextAlloc*()` function behavior.
     pub fn nextAlloc(self: *@This(), allocator: std.mem.Allocator, when: std.json.AllocWhen) AllocError!Token {
         return self.nextAllocMax(allocator, when, std.json.default_max_value_len);
