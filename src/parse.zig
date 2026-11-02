@@ -721,3 +721,149 @@ test "drop in for std.json errors" {
     try local.parseAndVerify(true);
     try local.parseAndVerify(false);
 }
+
+test "lifetimes std.json" {
+    const a =
+        \\ { "dinner"  :
+        \\ "food"        }
+    ;
+    const s = try std.testing.allocator.dupe(u8, a);
+    defer std.testing.allocator.free(s);
+
+    const S = struct { dinner: []const u8 };
+
+    // First, double check the behavior of std.json:
+    //   * verify reader and scanner token sources can't be reused
+    var source = std.json.Scanner.initCompleteInput(std.testing.allocator, s);
+    defer source.deinit();
+    const result = try std.json.parseFromTokenSource(S, std.testing.allocator, &source, .{ .allocate = .alloc_if_needed });
+    defer result.deinit();
+    try std.testing.expectEqualStrings("food", result.value.dinner);
+    // Throws an error when we try to reuse it because it's already at the end.
+    try std.testing.expectError(error.UnexpectedToken, std.json.parseFromTokenSource(S, std.testing.allocator, &source, .{ .allocate = .alloc_always }));
+
+    //   * verify alloc_if_needed tied to input
+    @memcpy(s[17..21], "noop");
+    try std.testing.expectEqualStrings("noop", result.value.dinner);
+
+    //   * verify alloc_always is fully owned
+    var source2 = std.json.Scanner.initCompleteInput(std.testing.allocator, s);
+    defer source2.deinit();
+    const result2 = try std.json.parseFromTokenSource(S, std.testing.allocator, &source2, .{ .allocate = .alloc_always });
+    defer result2.deinit();
+    try std.testing.expectEqualStrings("noop", result2.value.dinner);
+    @memcpy(s[17..21], "dlst");
+    try std.testing.expectEqualStrings("noop", result2.value.dinner);
+}
+
+test "lifetimes zerocopy" {
+    const a =
+        \\ { "dinner"  :
+        \\ "food"        }
+    ;
+    const s = try std.testing.allocator.dupe(u8, a);
+    defer std.testing.allocator.free(s);
+
+    const S = struct { dinner: []const u8 };
+
+    // Second, verify behavior of simdjson:
+    //   * verify tape token source can't be reused
+    const TapeParser = @import("tape.zig").TapeParser;
+    const parser = try TapeParser.init(.{ .zero_copy = true });
+    defer parser.deinit();
+
+    var source = TapeTokenSource.initWithParser(s, parser);
+    defer source.deinit();
+    const result = try std.json.parseFromTokenSource(S, std.testing.allocator, &source, .{ .allocate = .alloc_if_needed });
+    defer result.deinit();
+    try std.testing.expectEqualStrings("food", result.value.dinner);
+    // Throws an error when we try to reuse it because it's already at the end.
+    try std.testing.expectError(error.UnexpectedToken, std.json.parseFromTokenSource(S, std.testing.allocator, &source, .{ .allocate = .alloc_always }));
+
+    //   * verify alloc_if_needed is NOT tied to input, despite what the documentation https://simdjson.github.io/simdjson/classsimdjson_1_1dom_1_1parser.html#a8a27c6955bc5b542890b2c4825ee917c
+    // says. Maybe because we read the tape out which must be fully constructed with a  string table, while the internal implementation may never create the tape in this case?
+    @memcpy(s[17..21], "noop");
+    try std.testing.expectEqualStrings("food", result.value.dinner);
+
+    //   * verify alloc_if_needed is tied to the parser.
+    const b =
+        \\ { "dinner"  :
+        \\ "jfkp"        }
+    ;
+    var another_source = TapeTokenSource.initWithParser(b, parser);
+    defer another_source.deinit();
+    const another = try std.json.parseFromTokenSource(S, std.testing.allocator, &another_source, .{});
+    defer another.deinit();
+    try std.testing.expectEqualStrings("jfkp", result.value.dinner);
+
+    //   * verify alloc_always is fully owned (can re-write input or free it with nothing bad happening)
+    var source2 = TapeTokenSource.initWithParser(s, parser);
+    defer source2.deinit();
+    const result2 = try std.json.parseFromTokenSource(S, std.testing.allocator, &source2, .{ .allocate = .alloc_always });
+    defer result2.deinit();
+    try std.testing.expectEqualStrings("noop", result2.value.dinner);
+    @memcpy(s[17..21], "dlst");
+    try std.testing.expectEqualStrings("noop", result2.value.dinner);
+
+    var another_source_2 = TapeTokenSource.initWithParser(b, parser);
+    defer another_source_2.deinit();
+    const another_2 = try std.json.parseFromTokenSource(S, std.testing.allocator, &another_source_2, .{});
+    defer another_2.deinit();
+    try std.testing.expectEqualStrings("noop", result2.value.dinner);
+}
+
+test "lifetimes copy" {
+    const a =
+        \\ { "dinner"  :
+        \\ "food"        }
+    ;
+    const s = try std.testing.allocator.dupe(u8, a);
+    defer std.testing.allocator.free(s);
+
+    const S = struct { dinner: []const u8 };
+
+    // Second, verify behavior of simdjson:
+    //   * verify tape token source can't be reused
+    const TapeParser = @import("tape.zig").TapeParser;
+    const parser = try TapeParser.init(.{ .zero_copy = false });
+    defer parser.deinit();
+
+    var source = TapeTokenSource.initWithParser(s, parser);
+    defer source.deinit();
+    const result = try std.json.parseFromTokenSource(S, std.testing.allocator, &source, .{ .allocate = .alloc_if_needed });
+    defer result.deinit();
+    try std.testing.expectEqualStrings("food", result.value.dinner);
+    // Throws an error when we try to reuse it because it's already at the end.
+    try std.testing.expectError(error.UnexpectedToken, std.json.parseFromTokenSource(S, std.testing.allocator, &source, .{ .allocate = .alloc_always }));
+
+    //   * verify alloc_if_needed is NOT tied to input, despite what the documentation https://simdjson.github.io/simdjson/classsimdjson_1_1dom_1_1parser.html#a8a27c6955bc5b542890b2c4825ee917c
+    // says. Maybe because we read the tape out which must be fully constructed with a  string table, while the internal implementation may never create the tape in this case?
+    @memcpy(s[17..21], "noop");
+    try std.testing.expectEqualStrings("food", result.value.dinner);
+
+    //   * verify alloc_if_needed is tied to the parser.
+    const b =
+        \\ { "dinner"  :
+        \\ "jfkp"        }
+    ;
+    var another_source = TapeTokenSource.initWithParser(b, parser);
+    defer another_source.deinit();
+    const another = try std.json.parseFromTokenSource(S, std.testing.allocator, &another_source, .{});
+    defer another.deinit();
+    try std.testing.expectEqualStrings("jfkp", result.value.dinner);
+
+    //   * verify alloc_always is fully owned (can re-write input or free it with nothing bad happening)
+    var source2 = TapeTokenSource.initWithParser(s, parser);
+    defer source2.deinit();
+    const result2 = try std.json.parseFromTokenSource(S, std.testing.allocator, &source2, .{ .allocate = .alloc_always });
+    defer result2.deinit();
+    try std.testing.expectEqualStrings("noop", result2.value.dinner);
+    @memcpy(s[17..21], "dlst");
+    try std.testing.expectEqualStrings("noop", result2.value.dinner);
+
+    var another_source_2 = TapeTokenSource.initWithParser(b, parser);
+    defer another_source_2.deinit();
+    const another_2 = try std.json.parseFromTokenSource(S, std.testing.allocator, &another_source_2, .{});
+    defer another_2.deinit();
+    try std.testing.expectEqualStrings("noop", result2.value.dinner);
+}

@@ -63,7 +63,7 @@ very similar to the JSON APIs in the standard library. This allows us to reuse p
 
 **TODO**: 
 * benchmark vs yyjson / std.json
-* Benchmark large, small, mmap, zero copy.
+* Benchmark large, small, mmap, zero copy, Reusing / perf of tapeparser?
 * Benchmarks sections showing speed vs c++ impl direct and std.json 
 
 * Update simdjson readme with a reference.
@@ -71,7 +71,7 @@ very similar to the JSON APIs in the standard library. This allows us to reuse p
     * Doc memory usage:  Note that this simdjson functions uses more memory as it parses the entire JSON file in memory up front, instead of walking it on demand.
 * Reviews from Ziggit.
 
-* Test for common mistakes, like reusing the token multiple times, or accessing memory from the scanner from the previous run after the scanner has been used, threading, zero copy ownership, add aliasing guard?
+* Test for threading...
 * Lifetime check - tapetokensource once used once. Does the same restriction apply for other token sources?
 * Update docs: I’d put it in three places: the zero_copy option, a “Lifetimes” section on TapeTokenSource, and a short example in the README. The key facts to state are who must keep what alive, and until when.
 
