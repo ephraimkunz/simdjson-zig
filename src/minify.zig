@@ -19,15 +19,15 @@ pub const MinifyError = error{
 /// Returns a slice of `out_buf` starting at index 0 containing the result.
 pub fn minify(str: []const u8, out_buf: []u8) MinifyError![]u8 {
     if (out_buf.len < str.len) {
-        return MinifyError.InvalidArg;
+        return error.InvalidArg;
     }
 
     var length: usize = 0;
     const err_code = sj.sj_minify(str.ptr, str.len, out_buf.ptr, &length);
     err.check(err_code) catch |e| {
         return switch (e) {
-            error.UnclosedString => MinifyError.UnclosedString,
-            else => MinifyError.Unknown,
+            error.UnclosedString => error.UnclosedString,
+            else => error.Unknown,
         };
     };
     return out_buf[0..length];
@@ -56,14 +56,14 @@ test "minify too small output buffer" {
     ;
     var out: [0]u8 = undefined;
     const result = minify(source, &out);
-    try std.testing.expectError(MinifyError.InvalidArg, result);
+    try std.testing.expectError(error.InvalidArg, result);
 }
 
 test "minify unterminated" {
     const source = "\"this is a test";
     var out: [source.len]u8 = undefined;
     const result = minify(source, &out);
-    try std.testing.expectError(MinifyError.UnclosedString, result);
+    try std.testing.expectError(error.UnclosedString, result);
 }
 
 test "fuzz minify" {

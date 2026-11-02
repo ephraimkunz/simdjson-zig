@@ -72,11 +72,10 @@ very similar to the JSON APIs in the standard library. This allows us to reuse p
 * Reviews from Ziggit.
 
 * Test for threading...
-* Lifetime check - tapetokensource once used once. Does the same restriction apply for other token sources?
-* Update docs: I’d put it in three places: the zero_copy option, a “Lifetimes” section on TapeTokenSource, and a short example in the README. The key facts to state are who must keep what alive, and until when.
+* Update lifetime docs:  “Lifetimes” section on TapeTokenSource, and a short example in the README.
 
 Lifetime: when using zero copy:
-Lifetime is tied to the parser instance AND the input if alloc_if_needed. If alloc_always is passed, lifetime is tied to the arena returned by std.json.Parsed. 
+Lifetime is tied to the parser instance if alloc_if_needed. If alloc_always is passed, lifetime is tied to the arena returned by std.json.Parsed. 
 
 Otherwise:
 Lifetime is tied to the parser instance if alloc_if_needed, not the input. This differs from std.json's lifetime, which is tied to the input if alloc_if_needed.

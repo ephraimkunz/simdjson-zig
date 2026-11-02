@@ -45,9 +45,9 @@ pub const TapeParser = struct {
         var inner: ?*sj.sj_parser = null;
         err.check(sj.sj_parser_new(options.max_capacity, options.max_depth, &inner)) catch |e| {
             return switch (e) {
-                error.MemAlloc => TapeParserError.MemAlloc,
-                error.Capacity => TapeParserError.Capacity,
-                else => TapeParserError.Unknown,
+                error.MemAlloc => error.MemAlloc,
+                error.Capacity => error.Capacity,
+                else => error.Unknown,
             };
         };
         return .{ .inner = inner.?, .zero_copy = options.zero_copy };
@@ -123,8 +123,8 @@ pub const TapeTokenSource = struct {
         } else {
             return self.parseAndCacheTape() catch |e| {
                 return switch (e) {
-                    error.Depth, error.Capacity, error.MemAlloc, error.Syntax => std.json.Scanner.Error.SyntaxError,
-                    error.Unknown => std.json.Scanner.Error.UnexpectedEndOfInput,
+                    error.Depth, error.Capacity, error.MemAlloc, error.Syntax => error.SyntaxError,
+                    error.Unknown => error.UnexpectedEndOfInput,
                 };
             };
         }
@@ -142,9 +142,9 @@ pub const TapeTokenSource = struct {
 
         err.check(sj.sj_parser_parse(self.parser.?.inner, self.s.ptr, self.s.len, self.parser.?.zero_copy)) catch |e| {
             return switch (e) {
-                error.Capacity => TapeTokenSourceError.Capacity,
-                error.DepthError => TapeTokenSourceError.Depth,
-                error.MemAlloc => TapeTokenSourceError.MemAlloc,
+                error.Capacity => error.Capacity,
+                error.DepthError => error.Depth,
+                error.MemAlloc => error.MemAlloc,
                 error.TapeError,
                 error.UnclosedString,
                 error.Empty,
@@ -155,9 +155,9 @@ pub const TapeTokenSource = struct {
                 error.NumberError,
                 error.UnescapedChars,
                 error.StringError,
-                => TapeTokenSourceError.Syntax,
+                => error.Syntax,
                 // The above were explicitly hit and mapped to the closest error. Below were never hit and are caught for safety.
-                else => TapeTokenSourceError.Unknown,
+                else => error.Unknown,
             };
         };
         const c_tape = sj.sj_parser_get_tape_view(self.parser.?.inner);
@@ -211,7 +211,7 @@ pub const TapeTokenSource = struct {
     pub fn skipValue(self: *TapeTokenSource) TapeTokenSource.SkipError!void {
         const t = try self.tape();
         if (self.pos >= t.tape.len) {
-            return TapeTokenSource.SkipError.UnexpectedEndOfInput;
+            return error.UnexpectedEndOfInput;
         }
 
         const val = t.tape[self.pos];
@@ -233,7 +233,7 @@ pub const TapeTokenSource = struct {
     pub fn next(self: *TapeTokenSource) TapeTokenSource.NextError!std.json.Token {
         return self.nextInternal(.alloc_never, null) catch |e| {
             switch (e) {
-                TapeTokenSource.AllocError.ValueTooLong => unreachable, // max_value_len is null, which is the only way to reach this.
+                error.ValueTooLong => unreachable, // max_value_len is null, which is the only way to reach this.
                 else => |other| return other,
             }
         };
@@ -286,7 +286,7 @@ pub const TapeTokenSource = struct {
                 switch (when) {
                     .alloc_always => |allocator| {
                         if (s.len > max_value_len orelse std.math.maxInt(usize)) {
-                            return TapeTokenSource.AllocError.ValueTooLong;
+                            return error.ValueTooLong;
                         } else {
                             return Token{ .allocated_string = try allocator.dupe(u8, s) };
                         }
@@ -301,7 +301,7 @@ pub const TapeTokenSource = struct {
 
                 return switch (when) {
                     .alloc_always => |allocator| if (s.len > max_value_len orelse std.math.maxInt(usize))
-                        TapeTokenSource.AllocError.ValueTooLong
+                        error.ValueTooLong
                     else
                         Token{ .allocated_number = try allocator.dupe(u8, s) },
                     .alloc_if_needed, .alloc_never => return Token{ .number = s },
@@ -312,7 +312,7 @@ pub const TapeTokenSource = struct {
                 const num_str = std.mem.print(&self.scratch, "{d}", .{num}) catch unreachable;
                 const result = switch (when) {
                     .alloc_always, .alloc_if_needed => |allocator| if (num_str.len > max_value_len orelse std.math.maxInt(usize))
-                        TapeTokenSource.AllocError.ValueTooLong
+                        error.ValueTooLong
                     else
                         Token{ .allocated_number = try allocator.dupe(u8, num_str) },
                     .alloc_never => Token{ .number = num_str },
@@ -325,7 +325,7 @@ pub const TapeTokenSource = struct {
                 const num_str = std.mem.print(&self.scratch, "{d}", .{num}) catch unreachable;
                 const result = switch (when) {
                     .alloc_always, .alloc_if_needed => |allocator| if (num_str.len > max_value_len orelse std.math.maxInt(usize))
-                        TapeTokenSource.AllocError.ValueTooLong
+                        error.ValueTooLong
                     else
                         Token{ .allocated_number = try allocator.dupe(u8, num_str) },
                     .alloc_never => Token{ .number = num_str },
@@ -338,7 +338,7 @@ pub const TapeTokenSource = struct {
                 const num_str = std.mem.print(&self.scratch, "{e}", .{num}) catch unreachable;
                 const result = switch (when) {
                     .alloc_always, .alloc_if_needed => |allocator| if (num_str.len > max_value_len orelse std.math.maxInt(usize))
-                        TapeTokenSource.AllocError.ValueTooLong
+                        error.ValueTooLong
                     else
                         Token{ .allocated_number = try allocator.dupe(u8, num_str) },
                     .alloc_never => Token{ .number = num_str },
@@ -399,7 +399,7 @@ test "max_alloc_len string" {
     try std.testing.expectEqualSlices(u8, "abcdefg", s);
     scanner.reset();
 
-    try std.testing.expectError(std.json.Scanner.AllocError.ValueTooLong, scanner.nextAllocMax(std.testing.allocator, .alloc_always, 6));
+    try std.testing.expectError(error.ValueTooLong, scanner.nextAllocMax(std.testing.allocator, .alloc_always, 6));
 }
 
 test "max_alloc_len big int" {
@@ -417,7 +417,7 @@ test "max_alloc_len big int" {
     try std.testing.expectEqualSlices(u8, "99999999999999999999", s);
     scanner.reset();
 
-    try std.testing.expectError(std.json.Scanner.AllocError.ValueTooLong, scanner.nextAllocMax(std.testing.allocator, .alloc_always, 19));
+    try std.testing.expectError(error.ValueTooLong, scanner.nextAllocMax(std.testing.allocator, .alloc_always, 19));
 }
 
 test "max_alloc_len u64" {
@@ -425,7 +425,7 @@ test "max_alloc_len u64" {
     defer scanner.deinit();
 
     // Numbers eagerly allocated
-    try std.testing.expectError(std.json.Scanner.AllocError.ValueTooLong, scanner.nextAllocMax(std.testing.allocator, .alloc_if_needed, 3));
+    try std.testing.expectError(error.ValueTooLong, scanner.nextAllocMax(std.testing.allocator, .alloc_if_needed, 3));
     scanner.reset();
 
     // No error because we have just enough space.
@@ -434,7 +434,7 @@ test "max_alloc_len u64" {
     try std.testing.expectEqualSlices(u8, "12345", s);
     scanner.reset();
 
-    try std.testing.expectError(std.json.Scanner.AllocError.ValueTooLong, scanner.nextAllocMax(std.testing.allocator, .alloc_always, 4));
+    try std.testing.expectError(error.ValueTooLong, scanner.nextAllocMax(std.testing.allocator, .alloc_always, 4));
 }
 
 test "max_alloc_len i64" {
@@ -442,7 +442,7 @@ test "max_alloc_len i64" {
     defer scanner.deinit();
 
     // Numbers eagerly allocated
-    try std.testing.expectError(std.json.Scanner.AllocError.ValueTooLong, scanner.nextAllocMax(std.testing.allocator, .alloc_if_needed, 3));
+    try std.testing.expectError(error.ValueTooLong, scanner.nextAllocMax(std.testing.allocator, .alloc_if_needed, 3));
     scanner.reset();
 
     // No error because we have just enough space.
@@ -451,7 +451,7 @@ test "max_alloc_len i64" {
     try std.testing.expectEqualSlices(u8, "-1234", s);
     scanner.reset();
 
-    try std.testing.expectError(std.json.Scanner.AllocError.ValueTooLong, scanner.nextAllocMax(std.testing.allocator, .alloc_always, 4));
+    try std.testing.expectError(error.ValueTooLong, scanner.nextAllocMax(std.testing.allocator, .alloc_always, 4));
 }
 
 test "max_alloc_len f64" {
@@ -459,7 +459,7 @@ test "max_alloc_len f64" {
     defer scanner.deinit();
 
     // Numbers eagerly allocated
-    try std.testing.expectError(std.json.Scanner.AllocError.ValueTooLong, scanner.nextAllocMax(std.testing.allocator, .alloc_if_needed, 3));
+    try std.testing.expectError(error.ValueTooLong, scanner.nextAllocMax(std.testing.allocator, .alloc_if_needed, 3));
     scanner.reset();
 
     // No error because we have just enough space.
@@ -468,7 +468,7 @@ test "max_alloc_len f64" {
     try std.testing.expectEqualSlices(u8, "1.234e0", s);
     scanner.reset();
 
-    try std.testing.expectError(std.json.Scanner.AllocError.ValueTooLong, scanner.nextAllocMax(std.testing.allocator, .alloc_always, 4));
+    try std.testing.expectError(error.ValueTooLong, scanner.nextAllocMax(std.testing.allocator, .alloc_always, 4));
 }
 
 test "inner parse" {
@@ -531,7 +531,7 @@ test "max depth" {
     var tokenSource = TapeTokenSource.initWithParser(fixtures.export_data, parser);
     defer tokenSource.deinit();
 
-    try std.testing.expectError(std.json.Scanner.Error.SyntaxError, std.json.parseFromTokenSource(fixtures.Export, std.testing.allocator, &tokenSource, .{}));
+    try std.testing.expectError(error.SyntaxError, std.json.parseFromTokenSource(fixtures.Export, std.testing.allocator, &tokenSource, .{}));
 }
 
 test "max capacity" {
@@ -543,15 +543,15 @@ test "max capacity" {
     var tokenSource = TapeTokenSource.initWithParser(fixtures.export_data, parser);
     defer tokenSource.deinit();
 
-    try std.testing.expectError(std.json.Scanner.Error.SyntaxError, std.json.parseFromTokenSource(fixtures.Export, std.testing.allocator, &tokenSource, .{}));
+    try std.testing.expectError(error.SyntaxError, std.json.parseFromTokenSource(fixtures.Export, std.testing.allocator, &tokenSource, .{}));
 }
 
 test "zero max_depth" {
-    try std.testing.expectError(TapeParserError.Capacity, TapeParser.init(.{ .max_depth = 0 }));
+    try std.testing.expectError(error.Capacity, TapeParser.init(.{ .max_depth = 0 }));
 }
 
 test "large max_depth" {
-    try std.testing.expectError(TapeParserError.Capacity, TapeParser.init(.{ .max_depth = 0xFFFFFFFF }));
+    try std.testing.expectError(error.Capacity, TapeParser.init(.{ .max_depth = 0xFFFFFFFF }));
 }
 
 test "ensure parse" {

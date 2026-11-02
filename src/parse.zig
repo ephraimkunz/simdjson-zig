@@ -64,10 +64,10 @@ test "parseFromSlice fails" {
         \\ "value"        }
     ;
     const result = parseFromSlice(u32, std.testing.allocator, source, .{});
-    try std.testing.expectError(std.json.ParseFromValueError.UnexpectedToken, result);
+    try std.testing.expectError(error.UnexpectedToken, result);
 
     const stdlib_result = std.json.parseFromSlice(u32, std.testing.allocator, source, .{});
-    try std.testing.expectError(std.json.ParseFromValueError.UnexpectedToken, stdlib_result);
+    try std.testing.expectError(error.UnexpectedToken, stdlib_result);
 }
 
 test "parseFromSlice fails 2" {
@@ -76,10 +76,10 @@ test "parseFromSlice fails 2" {
         \\ value        }
     ;
     const result = parseFromSlice(u32, std.testing.allocator, source, .{});
-    try std.testing.expectError(std.json.Scanner.Error.SyntaxError, result);
+    try std.testing.expectError(error.SyntaxError, result);
 
     const stdlib_result = std.json.parseFromSlice(u32, std.testing.allocator, source, .{});
-    try std.testing.expectError(std.json.ParseFromValueError.UnexpectedToken, stdlib_result);
+    try std.testing.expectError(error.UnexpectedToken, stdlib_result);
 }
 
 test "parseFromSlice union" {
@@ -93,8 +93,8 @@ test "parseFromSlice union" {
 test "parseFromSlice unescaped chars" {
     const source = "\"This is a test\n\"";
 
-    try std.testing.expectError(std.json.Scanner.Error.SyntaxError, parseFromSlice([]u8, std.testing.allocator, source, .{}));
-    try std.testing.expectError(std.json.Scanner.Error.SyntaxError, std.json.parseFromSlice([]u8, std.testing.allocator, source, .{}));
+    try std.testing.expectError(error.SyntaxError, parseFromSlice([]u8, std.testing.allocator, source, .{}));
+    try std.testing.expectError(error.SyntaxError, std.json.parseFromSlice([]u8, std.testing.allocator, source, .{}));
 }
 
 test "parseFromSlice unknown field" {
@@ -102,7 +102,7 @@ test "parseFromSlice unknown field" {
 
     const S = struct { dinner: []const u8 };
     const result = parseFromSlice(S, std.testing.allocator, source, .{});
-    try std.testing.expectError(std.json.ParseFromValueError.UnknownField, result);
+    try std.testing.expectError(error.UnknownField, result);
 }
 
 test "parseFromSlice ignores unknown field" {
@@ -209,28 +209,28 @@ test "parseFromSlice larger" {
 }
 
 test "malformed: empty input" {
-    try std.testing.expectError(std.json.Scanner.Error.SyntaxError, parseFromSlice(u32, std.testing.allocator, "", .{}));
-    try std.testing.expectError(std.json.Scanner.Error.UnexpectedEndOfInput, std.json.parseFromSlice(u32, std.testing.allocator, "", .{}));
+    try std.testing.expectError(error.SyntaxError, parseFromSlice(u32, std.testing.allocator, "", .{}));
+    try std.testing.expectError(error.UnexpectedEndOfInput, std.json.parseFromSlice(u32, std.testing.allocator, "", .{}));
 }
 
 test "malformed: truncated array" {
-    try std.testing.expectError(std.json.Scanner.Error.SyntaxError, parseFromSlice([]u32, std.testing.allocator, "[1,", .{}));
-    try std.testing.expectError(std.json.Scanner.Error.UnexpectedEndOfInput, std.json.parseFromSlice([]u32, std.testing.allocator, "[1,", .{}));
+    try std.testing.expectError(error.SyntaxError, parseFromSlice([]u32, std.testing.allocator, "[1,", .{}));
+    try std.testing.expectError(error.UnexpectedEndOfInput, std.json.parseFromSlice([]u32, std.testing.allocator, "[1,", .{}));
 }
 
 test "malformed: unclosed string" {
-    try std.testing.expectError(std.json.Scanner.Error.SyntaxError, parseFromSlice([]const u8, std.testing.allocator, "\"abc", .{}));
-    try std.testing.expectError(std.json.Scanner.Error.UnexpectedEndOfInput, std.json.parseFromSlice([]const u8, std.testing.allocator, "\"abc", .{}));
+    try std.testing.expectError(error.SyntaxError, parseFromSlice([]const u8, std.testing.allocator, "\"abc", .{}));
+    try std.testing.expectError(error.UnexpectedEndOfInput, std.json.parseFromSlice([]const u8, std.testing.allocator, "\"abc", .{}));
 }
 
 test "malformed: invalid utf-8 inside string" {
-    try std.testing.expectError(std.json.Scanner.Error.SyntaxError, parseFromSlice([]const u8, std.testing.allocator, "\"\xff\"", .{}));
-    try std.testing.expectError(std.json.Scanner.Error.SyntaxError, std.json.parseFromSlice([]const u8, std.testing.allocator, "\"\xff\"", .{}));
+    try std.testing.expectError(error.SyntaxError, parseFromSlice([]const u8, std.testing.allocator, "\"\xff\"", .{}));
+    try std.testing.expectError(error.SyntaxError, std.json.parseFromSlice([]const u8, std.testing.allocator, "\"\xff\"", .{}));
 }
 
 test "malformed: bare invalid byte" {
-    try std.testing.expectError(std.json.Scanner.Error.SyntaxError, parseFromSlice(u32, std.testing.allocator, "\xff", .{}));
-    try std.testing.expectError(std.json.Scanner.Error.SyntaxError, std.json.parseFromSlice(u32, std.testing.allocator, "\xff", .{}));
+    try std.testing.expectError(error.SyntaxError, parseFromSlice(u32, std.testing.allocator, "\xff", .{}));
+    try std.testing.expectError(error.SyntaxError, std.json.parseFromSlice(u32, std.testing.allocator, "\xff", .{}));
 }
 
 test "invalid escape -> string error" {
@@ -243,16 +243,16 @@ test "invalid escape -> string error" {
     };
     for (cases) |src| {
         const result = parseFromSlice([]const u8, std.testing.allocator, src, .{});
-        try std.testing.expectError(std.json.Scanner.Error.SyntaxError, result);
+        try std.testing.expectError(error.SyntaxError, result);
         const result2 = std.json.parseFromSlice([]const u8, std.testing.allocator, src, .{});
-        try std.testing.expectError(std.json.Scanner.Error.SyntaxError, result2);
+        try std.testing.expectError(error.SyntaxError, result2);
     }
 
     const input = "{\"\\x\": 1}"; // bad escape in an object key
     const result = parseFromSlice([]const u8, std.testing.allocator, input, .{});
-    try std.testing.expectError(std.json.Scanner.Error.SyntaxError, result);
+    try std.testing.expectError(error.SyntaxError, result);
     const result2 = std.json.parseFromSlice([]const u8, std.testing.allocator, input, .{});
-    try std.testing.expectError(std.json.ParseFromValueError.UnexpectedToken, result2);
+    try std.testing.expectError(error.UnexpectedToken, result2);
 }
 
 test "malformed: balanced nesting beyond depth limit" {
@@ -261,8 +261,8 @@ test "malformed: balanced nesting beyond depth limit" {
     defer std.testing.allocator.free(buf);
     @memset(buf[0..depth], '[');
     @memset(buf[depth..], ']');
-    try std.testing.expectError(std.json.Scanner.Error.SyntaxError, parseFromSlice(u32, std.testing.allocator, buf, .{}));
-    try std.testing.expectError(std.json.ParseFromValueError.UnexpectedToken, std.json.parseFromSlice(u32, std.testing.allocator, buf, .{}));
+    try std.testing.expectError(error.SyntaxError, parseFromSlice(u32, std.testing.allocator, buf, .{}));
+    try std.testing.expectError(error.UnexpectedToken, std.json.parseFromSlice(u32, std.testing.allocator, buf, .{}));
 }
 
 test "malformed: unbalanced nesting beyond depth limit" {
@@ -270,8 +270,8 @@ test "malformed: unbalanced nesting beyond depth limit" {
     const buf = try std.testing.allocator.alloc(u8, depth);
     defer std.testing.allocator.free(buf);
     @memset(buf, '[');
-    try std.testing.expectError(std.json.Scanner.Error.SyntaxError, parseFromSlice(u32, std.testing.allocator, buf, .{}));
-    try std.testing.expectError(std.json.ParseFromValueError.UnexpectedToken, std.json.parseFromSlice(u32, std.testing.allocator, buf, .{}));
+    try std.testing.expectError(error.SyntaxError, parseFromSlice(u32, std.testing.allocator, buf, .{}));
+    try std.testing.expectError(error.UnexpectedToken, std.json.parseFromSlice(u32, std.testing.allocator, buf, .{}));
 }
 
 test "bigint" {
@@ -284,23 +284,23 @@ test "bigint" {
 }
 
 test "malformed: number error" {
-    try std.testing.expectError(std.json.Scanner.Error.SyntaxError, parseFromSlice(u32, std.testing.allocator, "01234", .{}));
-    try std.testing.expectError(std.json.Scanner.Error.SyntaxError, std.json.parseFromSlice(u32, std.testing.allocator, "01234", .{}));
+    try std.testing.expectError(error.SyntaxError, parseFromSlice(u32, std.testing.allocator, "01234", .{}));
+    try std.testing.expectError(error.SyntaxError, std.json.parseFromSlice(u32, std.testing.allocator, "01234", .{}));
 }
 
 test "malformed: incomplete null" {
-    try std.testing.expectError(std.json.Scanner.Error.SyntaxError, parseFromSlice(?u32, std.testing.allocator, "nul", .{}));
-    try std.testing.expectError(std.json.Scanner.Error.UnexpectedEndOfInput, std.json.parseFromSlice(?u32, std.testing.allocator, "nul", .{}));
+    try std.testing.expectError(error.SyntaxError, parseFromSlice(?u32, std.testing.allocator, "nul", .{}));
+    try std.testing.expectError(error.UnexpectedEndOfInput, std.json.parseFromSlice(?u32, std.testing.allocator, "nul", .{}));
 }
 
 test "malformed: incomplete true" {
-    try std.testing.expectError(std.json.Scanner.Error.SyntaxError, parseFromSlice(?u32, std.testing.allocator, "tru", .{}));
-    try std.testing.expectError(std.json.Scanner.Error.UnexpectedEndOfInput, std.json.parseFromSlice(?u32, std.testing.allocator, "tru", .{}));
+    try std.testing.expectError(error.SyntaxError, parseFromSlice(?u32, std.testing.allocator, "tru", .{}));
+    try std.testing.expectError(error.UnexpectedEndOfInput, std.json.parseFromSlice(?u32, std.testing.allocator, "tru", .{}));
 }
 
 test "malformed: incomplete false" {
-    try std.testing.expectError(std.json.Scanner.Error.SyntaxError, parseFromSlice(?u32, std.testing.allocator, "fals", .{}));
-    try std.testing.expectError(std.json.Scanner.Error.UnexpectedEndOfInput, std.json.parseFromSlice(?u32, std.testing.allocator, "fals", .{}));
+    try std.testing.expectError(error.SyntaxError, parseFromSlice(?u32, std.testing.allocator, "fals", .{}));
+    try std.testing.expectError(error.UnexpectedEndOfInput, std.json.parseFromSlice(?u32, std.testing.allocator, "fals", .{}));
 }
 
 test "scientific notation" {

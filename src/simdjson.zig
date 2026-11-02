@@ -42,4 +42,6 @@ test {
     _ = @import("validate.zig");
     _ = @import("test.zig");
     _ = @import("JSONTestSuite_test.zig");
+    _ = @import("fixtures.zig");
+    _ = @import("error.zig");
 }

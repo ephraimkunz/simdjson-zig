@@ -19,7 +19,7 @@ pub fn validate(allocator: std.mem.Allocator, s: []const u8) std.mem.Allocator.E
     _ = allocator;
     const parser = TapeParser.init(.{}) catch |e| {
         switch (e) {
-            error.MemAlloc, error.Capacity => return std.mem.Allocator.Error.OutOfMemory,
+            error.MemAlloc, error.Capacity => return error.OutOfMemory,
             else => return false,
         }
     };
