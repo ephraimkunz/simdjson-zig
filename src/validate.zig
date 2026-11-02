@@ -71,3 +71,14 @@ test "fuzz validateUTF8" {
     };
     try std.testing.fuzz({}, t.fuzz_validateUTF8, .{});
 }
+
+test "fuzz validate" {
+    const t = struct {
+        var data: [1_000]u8 = undefined;
+        fn fuzz_validate(_: void, smith: *std.testing.Smith) !void {
+            const len = smith.slice(&data);
+            _ = validate(std.testing.allocator, data[0..len]) catch {};
+        }
+    };
+    try std.testing.fuzz({}, t.fuzz_validate, .{});
+}
