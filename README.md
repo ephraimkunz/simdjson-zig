@@ -74,29 +74,13 @@ very similar to the JSON APIs in the standard library. This allows us to reuse p
 * Test for threading...
 * Update lifetime docs:  “Lifetimes” section on TapeTokenSource, and a short example in the README.
 
-Lifetime: when using zero copy:
-Lifetime is tied to the parser instance if alloc_if_needed. If alloc_always is passed, lifetime is tied to the arena returned by std.json.Parsed. 
+Lifetime is tied to the parser instance if alloc_if_needed, not the input, in zero copy and non-zero copy. If alloc_always is passed, lifetime is tied to the arena returned by std.json.Parsed. 
 
-Otherwise:
-Lifetime is tied to the parser instance if alloc_if_needed, not the input. This differs from std.json's lifetime, which is tied to the input if alloc_if_needed.
-parseFromSlice internally uses a parser instance, so it forces alloc_always. You can get around this by using parseFromTokenSource with your own parser + alloc_if_needed.
+This differs from std.json's lifetime, which is tied to the input if alloc_if_needed.
+parseFromSlice internally uses a parser instance that is allocated and deallocated, so it forces alloc_always. You can get around this by using parseFromTokenSource with your own parser + alloc_if_needed.
 
-On the option:
-
-zig
 /// If true (default), parse in place without making simdjson's padded copy.
 /// Faster and uses less memory on large inputs; no measurable difference on tiny ones.
-///
-/// Requirement: the input slice passed to TapeTokenSource must stay alive and
-/// unmodified from init() until you are finished with the token source. See the
-/// "Lifetimes" notes on TapeTokenSource.
-///
-/// Set to false if you can't guarantee that (e.g. the buffer is reused for the next
-/// read, or another thread may free it). The input can then be discarded as soon as
-/// parsing returns, at the cost of a temporary padded copy.
-zero_copy: bool = true,
-
-On TapeTokenSource:
 
 zig
 /// Lifetimes
@@ -104,29 +88,8 @@ zig
 /// - Parsing is lazy: init() only stores the slice, and the document is parsed on the
 ///   first token or peek. The input must not be freed or modified between init() and
 ///   the end of parsing, not just during init().
-/// - With zero_copy, keep the input alive until you are done with the token source.
-///   This is simdjson's own rule for parse_unpadded.
 /// - Tokens never point into your input. Strings from next() (and from nextAlloc* with
 ///   .alloc_if_needed) point into the parser's buffer, valid until that parser parses
 ///   another document or is freed. Numbers are formatted into a scratch buffer and are
 ///   valid only until the next call.
-/// - Values produced by std.json with .alloc_always own their memory and outlive both
-///   the input and the parser.
-
-In the README, with one example of each:
-
-zig
-// OK: input outlives the parse; the result owns its memory.
-const bytes = try std.fs.cwd().readFileAlloc(alloc, "data.json", max);
-defer alloc.free(bytes);
-var src = TapeTokenSource.init(bytes);
-defer src.deinit();
-const parsed = try std.json.parseFromTokenSource(T, alloc, &src, .{});
-defer parsed.deinit(); // safe to use even after `bytes` is freed
-
-// Bug with zero_copy: buffer reused before the token source is finished.
-var src = TapeTokenSource.init(read_buf[0..n]);
-@memcpy(read_buf[0..m], next_chunk); // overwrites input before first token is read
-_ = try src.next();                  // parses garbage
-
-I haven’t checked the claim that tokens never point into the input against the shim, only against the Zig code and simdjson’s DOM, which unescapes strings into its own buffer. Keep the “must stay alive until done” wording regardless, since it’s simdjson’s documented rule and costs users nothing. A test that frees or overwrites the input right after parseFromTokenSource returns would confirm the result really owns its data.  
+/// - Values produced by std.json with .alloc_always own their memory and outlive the parser.
