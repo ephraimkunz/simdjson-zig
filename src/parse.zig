@@ -23,6 +23,7 @@ pub fn parseFromSlice(
     o.allocate = .alloc_always;
 
     // Ensure this behaves like a slice in std.json, where strings longer than the default can be parsed unless the user has forbidden it.
+    // The user has already provided the entire input, and we use that length as the upperbound on the length of a field.
     o.max_value_len = options.max_value_len orelse @max(s.len, std.json.default_max_value_len);
 
     return std.json.parseFromTokenSource(
@@ -54,6 +55,7 @@ pub fn parseFromSliceLeaky(
     o.allocate = .alloc_always;
 
     // Ensure this behaves like a slice in std.json, where strings longer than the default can be parsed unless the user has forbidden it.
+    // The user has already provided the entire input, and we use that length as the upperbound on the length of a field.
     o.max_value_len = options.max_value_len orelse @max(s.len, std.json.default_max_value_len);
 
     return std.json.parseFromTokenSourceLeaky(
