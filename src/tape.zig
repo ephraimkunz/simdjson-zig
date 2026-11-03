@@ -61,7 +61,7 @@ pub const TapeParser = struct {
 pub const TapeTokenSourceError = error{
     /// This parser can't support a document that big
     Capacity,
-    /// The doocument exceeds the user-specified depth limitation
+    /// The document exceeds the user-specified depth limitation
     Depth,
     /// Error allocating memory, most likely out of memory
     MemAlloc,

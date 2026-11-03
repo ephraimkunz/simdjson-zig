@@ -42,9 +42,9 @@ expecting an unparsed number, resulting in us having to re-serialize a number no
 |  |  |  |
 
 Additionally, the Zig binding adds new API for functionality simdjson exposes that the standard libraray doesn't:
-* `fn minify(str: []const u8, out_buf: []u8) err.Error![]u8` to minifiy JSON strings without parsing.
+* `fn minify(str: []const u8, out_buf: []u8) MinifyError![]u8` to minifiy JSON strings without parsing.
 * `pub fn validateUTF8(str: []const u8) bool` to validate that a sequence of bytes are UTF-8 encoded.
-* `pub fn validate(s: []const u8) std.mem.Allocator.Error!bool` to scan the input and check for malformed JSON.
+* `pub fn validate(allocation: Allocator, s: []const u8) std.mem.Allocator.Error!bool` to scan the input and check for malformed JSON.
 
 
 ## Tips for speed
@@ -70,6 +70,7 @@ very similar to the JSON APIs in the standard library. This allows us to reuse p
     * Doc memory usage:  Note that this simdjson functions uses more memory as it parses the entire JSON file in memory up front, instead of walking it on demand.
 * Reviews from Ziggit.
 * Find way to warn on not freeing tapeparser / tapetokensource, or provide way to run with `leaks`.
+* Mark zero-copy as experimental in doc + readme
 
 * Update lifetime docs:  “Lifetimes” section on the package, and a short example in the README.
 
