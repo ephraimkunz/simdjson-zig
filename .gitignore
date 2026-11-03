@@ -1,6 +1,5 @@
 .zig-cache/
 zig-out/
 zig-pkg/
-*.o
-data_1gb.json
-100mb.json
+benchmarking/original/
+benchmarking/*.json
