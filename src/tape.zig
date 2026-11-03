@@ -564,5 +564,6 @@ test "large max_depth" {
 
 test "ensure parse" {
     var source = TapeTokenSource.init("s: []const u8");
+    defer source.deinit();
     try std.testing.expectError(TapeTokenSourceError.Syntax, source.ensureParse());
 }

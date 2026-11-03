@@ -534,6 +534,7 @@ test "parse value" {
 test "parse array_hash_map" {
     const ahm = std.json.ArrayHashMap([]const u8);
     var source = TapeTokenSource.init("{\"test\": \"one\", \"test1\": \"two\", \"test2\": \"three\"}");
+    defer source.deinit();
     var parsed = try ahm.jsonParse(std.testing.allocator, &source, .{ .allocate = .alloc_if_needed, .max_value_len = std.json.default_max_value_len });
     defer parsed.deinit(std.testing.allocator);
 
