@@ -74,6 +74,8 @@ pub const TapeTokenSourceError = error{
 // https://github.com/simdjson/simdjson/blob/master/doc/tape.md
 /// This is a token source that can be passed into any function in [the std lib json namespace](https://ziglang.org/documentation/master/std/#std.json)
 /// that takes a generic source (a std.json.Reader or std.json.Scanner): [parseFromTokenSource](https://ziglang.org/documentation/master/std/#std.json.static.parseFromTokenSource), [parseFromTokenSourceLeaky](https://ziglang.org/documentation/master/std/#std.json.static.parseFromTokenSource), etc.
+///
+/// Parsing a new document with this parser invalidates every `TapeTokenSource` and every token that uses it (that doesn't pass `alloc_always`).
 pub const TapeTokenSource = struct {
     s: []const u8,
     pos: usize = 1, // Skip the first r entry.
@@ -100,6 +102,8 @@ pub const TapeTokenSource = struct {
 
     /// When parsing multiple documents, it's more efficient to reuse the parser, creating a
     /// new TapeTokenSource for each document but passing in the same parser.
+    ///
+    /// The parser may be shared by sources used one after another, never at the same time; see `TapeParser`.
     pub fn initWithParser(s: []const u8, parser: TapeParser) TapeTokenSource {
         return .{ .s = s, .parser = parser, .parser_externally_provided = true };
     }
@@ -268,6 +272,7 @@ pub const TapeTokenSource = struct {
                 p.deinit();
             }
         }
+        self.* = undefined;
     }
 
     fn nextInternal(self: *TapeTokenSource, when: NextAllocStrategy, max_value_len: ?usize) TapeTokenSource.AllocError!std.json.Token {
