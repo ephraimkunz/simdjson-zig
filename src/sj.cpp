@@ -6,10 +6,15 @@ struct sj_parser {
 };
 
 int sj_parser_new(size_t max_capacity, size_t max_depth, sj_parser **out_parser) {
-    auto parser = new sj_parser;
+    auto parser = new (std::nothrow) sj_parser;
+    if (!parser) {
+        return simdjson::error_code::MEMALLOC;
+    }
+    
     parser->parser.set_max_capacity(max_capacity);
     auto rc = parser->parser.allocate(0, max_depth);
     if (rc != simdjson::error_code::SUCCESS) {
+        delete parser;
         return rc;
     }
     // We support big ints in the string table.
