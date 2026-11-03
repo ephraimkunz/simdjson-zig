@@ -12,9 +12,7 @@ pub fn validateUTF8(s: []const u8) bool {
 /// allowing that function to be replaced seamlessly by this one.
 ///
 /// Scan the input and check for malformed JSON.
-/// On `SyntaxError` or `UnexpectedEndOfInput`, returns `false`.
-/// Returns any errors from the allocator as-is, which is unlikely,
-/// but can be caused by extreme nesting depth in the input.
+/// Returns `error.OutOfMemory` if allocation fails or the input is too large.
 pub fn validate(allocator: std.mem.Allocator, s: []const u8) std.mem.Allocator.Error!bool {
     _ = allocator;
     const parser = TapeParser.init(.{}) catch |e| {
