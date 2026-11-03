@@ -24,11 +24,13 @@ These bindings support many of the features of simdjson:
 We strive to be a drop-in replacement to the Zig standard library JSON API, allowing you to speed up JSON parsing without having to change much code.
 Simply stop importing `std.json` and instead import `simdjson`.
 
-Note that although we support the same error set, and the same success/failure outcome, the specific error can differ on invalid input. This is unavoidable
-as we don't have all the same information about the state of the world at the same time as the standard library.
+The supported parsing functions use the same error sets as `std.json`, but the specific error returned for invalid input can differ
+because the parsers detect errors at different stages.
 
-Number will be parsed losslessly but possibly in a slightly different format. This is due to simdjson parsing the number into the tape, but the std library
-expecting an unparsed number, resulting in us having to re-serialize a number not knowing the original format.
+Numeric behavior follows simdjson's tape representation. Decimal and exponent forms are converted to `f64` before conversion to the
+requested Zig type. This can reduce precision or affect integer conversion, including when `parse_numbers = false`. Numbers outside
+the finite `f64` range may be rejected. Large integer literals without a decimal point or exponent are preserved as text through
+bigint support. Original numeric spelling and negative zero are not always preserved.
 
 **TODO** Example.
 
