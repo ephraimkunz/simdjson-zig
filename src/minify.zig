@@ -40,7 +40,7 @@ test minify {
     ;
     var out: [source.len]u8 = undefined;
     const result = try minify(source, &out);
-    try std.testing.expectEqualSlices(u8, result, "{\"this is a test\":\"value\"}");
+    try std.testing.expectEqualStrings(result, "{\"this is a test\":\"value\"}");
 }
 
 test "minify empty" {

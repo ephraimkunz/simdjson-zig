@@ -22,6 +22,9 @@ pub fn parseFromSlice(
     var o = options;
     o.allocate = .alloc_always;
 
+    // Ensure this behaves like a slice in std.json, where strings longer than the default can be parsed unless the user has forbidden it.
+    o.max_value_len = options.max_value_len orelse @max(s.len, std.json.default_max_value_len);
+
     return std.json.parseFromTokenSource(
         T,
         allocator,
@@ -49,6 +52,9 @@ pub fn parseFromSliceLeaky(
     // freed above in tapeTokenSource.deinit.
     var o = options;
     o.allocate = .alloc_always;
+
+    // Ensure this behaves like a slice in std.json, where strings longer than the default can be parsed unless the user has forbidden it.
+    o.max_value_len = options.max_value_len orelse @max(s.len, std.json.default_max_value_len);
 
     return std.json.parseFromTokenSourceLeaky(
         T,
@@ -111,7 +117,7 @@ test "parseFromSlice ignores unknown field" {
     const S = struct { dinner: []const u8 };
     const result = try parseFromSlice(S, std.testing.allocator, source, .{ .ignore_unknown_fields = true });
     defer result.deinit();
-    try std.testing.expectEqualSlices(u8, "spam", result.value.dinner);
+    try std.testing.expectEqualStrings("spam", result.value.dinner);
 }
 
 test "parseFromSlice alloc if needed" {
@@ -120,8 +126,8 @@ test "parseFromSlice alloc if needed" {
     const S = struct { dinner: []const u8, lunch: []const u8 };
     const result = try parseFromSlice(S, std.testing.allocator, source, .{ .allocate = .alloc_if_needed });
     defer result.deinit();
-    try std.testing.expectEqualSlices(u8, "spam", result.value.dinner);
-    try std.testing.expectEqualSlices(u8, "pbj", result.value.lunch);
+    try std.testing.expectEqualStrings("spam", result.value.dinner);
+    try std.testing.expectEqualStrings("pbj", result.value.lunch);
 }
 
 test "parseFromSlice positive number" {
@@ -161,7 +167,7 @@ test "parseFromSlice struct" {
     const S = struct { dinner: []const u8 };
     const result = try parseFromSlice(S, std.testing.allocator, source, .{});
     defer result.deinit();
-    try std.testing.expectEqualSlices(u8, "food", result.value.dinner);
+    try std.testing.expectEqualStrings("food", result.value.dinner);
 }
 
 test "parseFromSlice larger" {
@@ -489,7 +495,7 @@ test "parseFromTokenSource" {
 
     // a is tied to the lifetime of tapeTokenSource and becomes invalid if the token source goes away.
     // If this is not desired, the options above should specify .allocate_always for the allocate parameter.
-    try std.testing.expectEqualSlices(u8, "food", a.value.dinner);
+    try std.testing.expectEqualStrings("food", a.value.dinner);
 }
 
 test "parseFromTokenSourceLeaky" {
@@ -515,7 +521,7 @@ test "parseFromTokenSourceLeaky" {
 
     // a is tied to the lifetime of tapeTokenSource and becomes invalid if the token source goes away.
     // If this is not desired, the options above should specify .allocate_always for the allocate parameter.
-    try std.testing.expectEqualSlices(u8, "food", a.dinner);
+    try std.testing.expectEqualStrings("food", a.dinner);
 }
 
 test "parse value" {
@@ -867,4 +873,35 @@ test "lifetimes copy" {
     const another_2 = try std.json.parseFromTokenSource(S, std.testing.allocator, &another_source_2, .{});
     defer another_2.deinit();
     try std.testing.expectEqualStrings("noop", result2.value.dinner);
+}
+
+test "max value len" {
+    const s = "\"abcdefghijklmnopqrstuvwxyz\"";
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const allocator = arena.allocator();
+    const result = parseFromSlice([]u8, allocator, s, .{ .max_value_len = 24 });
+    const result2 = parseFromSliceLeaky([]u8, allocator, s, .{ .max_value_len = 24 });
+    try std.testing.expectError(error.ValueTooLong, result);
+    try std.testing.expectError(error.ValueTooLong, result2);
+
+    const result3 = try parseFromSlice(f64, allocator, "1.2", .{});
+    defer result3.deinit();
+    try std.testing.expectEqual(1.2, result3.value);
+
+    const result4 = try parseFromSliceLeaky(f64, allocator, "1.2", .{});
+    try std.testing.expectEqual(1.2, result4);
+
+    const long = try std.testing.allocator.alloc(u8, std.json.default_max_value_len + 3);
+    defer std.testing.allocator.free(long);
+    @memset(long, 'a');
+    long[0] = '\"';
+    long[long.len - 1] = '\"';
+
+    const result5 = try parseFromSlice([]u8, allocator, long, .{});
+    defer result5.deinit();
+    try std.testing.expectEqualStrings(long[1 .. long.len - 1], result5.value);
+
+    const result6 = try parseFromSliceLeaky([]u8, allocator, long, .{});
+    try std.testing.expectEqualStrings(long[1 .. long.len - 1], result6);
 }

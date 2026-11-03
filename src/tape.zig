@@ -369,11 +369,11 @@ test TapeTokenSource {
     var scanner = TapeTokenSource.init("{\"foo\": [123.0, 456, -154]}\n");
     defer scanner.deinit();
     try std.testing.expectEqual(Token.object_begin, try scanner.next());
-    try std.testing.expectEqualSlices(u8, "foo", (try scanner.next()).string);
+    try std.testing.expectEqualStrings("foo", (try scanner.next()).string);
     try std.testing.expectEqual(Token.array_begin, try scanner.next());
-    try std.testing.expectEqualSlices(u8, "1.23e2", (try scanner.next()).number);
-    try std.testing.expectEqualSlices(u8, "456", (try scanner.next()).number);
-    try std.testing.expectEqualSlices(u8, "-154", (try scanner.next()).number);
+    try std.testing.expectEqualStrings("1.23e2", (try scanner.next()).number);
+    try std.testing.expectEqualStrings("456", (try scanner.next()).number);
+    try std.testing.expectEqualStrings("-154", (try scanner.next()).number);
     try std.testing.expectEqual(Token.array_end, try scanner.next());
     try std.testing.expectEqual(Token.object_end, try scanner.next());
     try std.testing.expectEqual(Token.end_of_document, try scanner.next());
@@ -403,13 +403,13 @@ test "max_alloc_len string" {
 
     // No alloc because we only do it if needed.
     var s = (try scanner.nextAllocMax(std.testing.allocator, .alloc_if_needed, 3)).string;
-    try std.testing.expectEqualSlices(u8, "abcdefg", s);
+    try std.testing.expectEqualStrings("abcdefg", s);
     scanner.reset();
 
     // No error because we have just enough space.
     s = (try scanner.nextAllocMax(std.testing.allocator, .alloc_always, 7)).allocated_string;
     defer std.testing.allocator.free(s);
-    try std.testing.expectEqualSlices(u8, "abcdefg", s);
+    try std.testing.expectEqualStrings("abcdefg", s);
     scanner.reset();
 
     try std.testing.expectError(error.ValueTooLong, scanner.nextAllocMax(std.testing.allocator, .alloc_always, 6));
@@ -421,13 +421,13 @@ test "max_alloc_len big int" {
 
     // No alloc because we only do it if needed.
     var s = (try scanner.nextAllocMax(std.testing.allocator, .alloc_if_needed, 3)).number;
-    try std.testing.expectEqualSlices(u8, "99999999999999999999", s);
+    try std.testing.expectEqualStrings("99999999999999999999", s);
     scanner.reset();
 
     // No error because we have just enough space.
     s = (try scanner.nextAllocMax(std.testing.allocator, .alloc_always, 20)).allocated_number;
     defer std.testing.allocator.free(s);
-    try std.testing.expectEqualSlices(u8, "99999999999999999999", s);
+    try std.testing.expectEqualStrings("99999999999999999999", s);
     scanner.reset();
 
     try std.testing.expectError(error.ValueTooLong, scanner.nextAllocMax(std.testing.allocator, .alloc_always, 19));
@@ -444,7 +444,7 @@ test "max_alloc_len u64" {
     // No error because we have just enough space.
     const s = (try scanner.nextAllocMax(std.testing.allocator, .alloc_always, 5)).allocated_number;
     defer std.testing.allocator.free(s);
-    try std.testing.expectEqualSlices(u8, "12345", s);
+    try std.testing.expectEqualStrings("12345", s);
     scanner.reset();
 
     try std.testing.expectError(error.ValueTooLong, scanner.nextAllocMax(std.testing.allocator, .alloc_always, 4));
@@ -461,7 +461,7 @@ test "max_alloc_len i64" {
     // No error because we have just enough space.
     const s = (try scanner.nextAllocMax(std.testing.allocator, .alloc_always, 5)).allocated_number;
     defer std.testing.allocator.free(s);
-    try std.testing.expectEqualSlices(u8, "-1234", s);
+    try std.testing.expectEqualStrings("-1234", s);
     scanner.reset();
 
     try std.testing.expectError(error.ValueTooLong, scanner.nextAllocMax(std.testing.allocator, .alloc_always, 4));
@@ -478,7 +478,7 @@ test "max_alloc_len f64" {
     // No error because we have just enough space.
     const s = (try scanner.nextAllocMax(std.testing.allocator, .alloc_always, 7)).allocated_number;
     defer std.testing.allocator.free(s);
-    try std.testing.expectEqualSlices(u8, "1.234e0", s);
+    try std.testing.expectEqualStrings("1.234e0", s);
     scanner.reset();
 
     try std.testing.expectError(error.ValueTooLong, scanner.nextAllocMax(std.testing.allocator, .alloc_always, 4));
