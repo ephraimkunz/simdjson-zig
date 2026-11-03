@@ -22,7 +22,7 @@ pub fn any(s: []const u8) !void {
     testHighLevelDynamicParser(s) catch {};
 }
 fn testLowLevelScanner(s: []const u8) !void {
-    var scanner = TapeTokenSource.init(s);
+    var scanner = TapeTokenSource.init(std.testing.allocator, s);
     defer scanner.deinit();
     while (true) {
         const token = try scanner.next();

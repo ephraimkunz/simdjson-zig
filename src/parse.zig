@@ -14,7 +14,7 @@ pub fn parseFromSlice(
     s: []const u8,
     options: std.json.ParseOptions,
 ) std.json.ParseError(std.json.Scanner)!std.json.Parsed(T) {
-    var tapeTokenSource = TapeTokenSource.init(s);
+    var tapeTokenSource = TapeTokenSource.init(allocator, s);
     defer tapeTokenSource.deinit();
 
     // For now, don't allow .alloc_if_needed in the options, as it makes us return a slice to the parser just
@@ -46,7 +46,7 @@ pub fn parseFromSliceLeaky(
     s: []const u8,
     options: std.json.ParseOptions,
 ) std.json.ParseError(std.json.Scanner)!T {
-    var tapeTokenSource = TapeTokenSource.init(s);
+    var tapeTokenSource = TapeTokenSource.init(allocator, s);
     defer tapeTokenSource.deinit();
 
     // For now, don't allow .alloc_if_needed in the options, as it makes us return a slice to the parser just
@@ -484,7 +484,7 @@ test "parseFromTokenSource" {
     ;
 
     const S = struct { dinner: []const u8 };
-    var tapeTokenSource = TapeTokenSource.init(source);
+    var tapeTokenSource = TapeTokenSource.init(std.testing.allocator, source);
     defer tapeTokenSource.deinit();
 
     const a = try std.json.parseFromTokenSource(
@@ -507,7 +507,7 @@ test "parseFromTokenSourceLeaky" {
     ;
 
     const S = struct { dinner: []const u8 };
-    var tapeTokenSource = TapeTokenSource.init(source);
+    var tapeTokenSource = TapeTokenSource.init(std.testing.allocator, source);
     defer tapeTokenSource.deinit();
 
     var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
@@ -529,7 +529,7 @@ test "parseFromTokenSourceLeaky" {
 test "parse value" {
     const source = "100";
 
-    var tapeTokenSource = TapeTokenSource.init(source);
+    var tapeTokenSource = TapeTokenSource.init(std.testing.allocator, source);
     defer tapeTokenSource.deinit();
 
     var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
@@ -541,7 +541,7 @@ test "parse value" {
 
 test "parse array_hash_map" {
     const ahm = std.json.ArrayHashMap([]const u8);
-    var source = TapeTokenSource.init("{\"test\": \"one\", \"test1\": \"two\", \"test2\": \"three\"}");
+    var source = TapeTokenSource.init(std.testing.allocator, "{\"test\": \"one\", \"test1\": \"two\", \"test2\": \"three\"}");
     defer source.deinit();
     var parsed = try ahm.jsonParse(std.testing.allocator, &source, .{ .allocate = .alloc_if_needed, .max_value_len = std.json.default_max_value_len });
     defer parsed.deinit(std.testing.allocator);
@@ -778,10 +778,10 @@ test "lifetimes zerocopy" {
     // Second, verify behavior of simdjson:
     //   * verify tape token source can't be reused
     const TapeParser = @import("tape.zig").TapeParser;
-    const parser = try TapeParser.init(.{ .zero_copy = true });
+    const parser = try TapeParser.init(std.testing.allocator, .{ .zero_copy = true });
     defer parser.deinit();
 
-    var source = TapeTokenSource.initWithParser(s, parser);
+    var source = TapeTokenSource.initWithParser(std.testing.allocator, parser, s);
     defer source.deinit();
     const result = try std.json.parseFromTokenSource(S, std.testing.allocator, &source, .{ .allocate = .alloc_if_needed });
     defer result.deinit();
@@ -799,14 +799,14 @@ test "lifetimes zerocopy" {
         \\ { "dinner"  :
         \\ "jfkp"        }
     ;
-    var another_source = TapeTokenSource.initWithParser(b, parser);
+    var another_source = TapeTokenSource.initWithParser(std.testing.allocator, parser, b);
     defer another_source.deinit();
     const another = try std.json.parseFromTokenSource(S, std.testing.allocator, &another_source, .{});
     defer another.deinit();
     try std.testing.expectEqualStrings("jfkp", result.value.dinner);
 
     //   * verify alloc_always is fully owned (can re-write input or free it with nothing bad happening)
-    var source2 = TapeTokenSource.initWithParser(s, parser);
+    var source2 = TapeTokenSource.initWithParser(std.testing.allocator, parser, s);
     defer source2.deinit();
     const result2 = try std.json.parseFromTokenSource(S, std.testing.allocator, &source2, .{ .allocate = .alloc_always });
     defer result2.deinit();
@@ -814,7 +814,7 @@ test "lifetimes zerocopy" {
     @memcpy(s[17..21], "dlst");
     try std.testing.expectEqualStrings("noop", result2.value.dinner);
 
-    var another_source_2 = TapeTokenSource.initWithParser(b, parser);
+    var another_source_2 = TapeTokenSource.initWithParser(std.testing.allocator, parser, b);
     defer another_source_2.deinit();
     const another_2 = try std.json.parseFromTokenSource(S, std.testing.allocator, &another_source_2, .{});
     defer another_2.deinit();
@@ -834,10 +834,10 @@ test "lifetimes copy" {
     // Second, verify behavior of simdjson:
     //   * verify tape token source can't be reused
     const TapeParser = @import("tape.zig").TapeParser;
-    const parser = try TapeParser.init(.{ .zero_copy = false });
+    const parser = try TapeParser.init(std.testing.allocator, .{ .zero_copy = false });
     defer parser.deinit();
 
-    var source = TapeTokenSource.initWithParser(s, parser);
+    var source = TapeTokenSource.initWithParser(std.testing.allocator, parser, s);
     defer source.deinit();
     const result = try std.json.parseFromTokenSource(S, std.testing.allocator, &source, .{ .allocate = .alloc_if_needed });
     defer result.deinit();
@@ -855,14 +855,14 @@ test "lifetimes copy" {
         \\ { "dinner"  :
         \\ "jfkp"        }
     ;
-    var another_source = TapeTokenSource.initWithParser(b, parser);
+    var another_source = TapeTokenSource.initWithParser(std.testing.allocator, parser, b);
     defer another_source.deinit();
     const another = try std.json.parseFromTokenSource(S, std.testing.allocator, &another_source, .{});
     defer another.deinit();
     try std.testing.expectEqualStrings("jfkp", result.value.dinner);
 
     //   * verify alloc_always is fully owned (can re-write input or free it with nothing bad happening)
-    var source2 = TapeTokenSource.initWithParser(s, parser);
+    var source2 = TapeTokenSource.initWithParser(std.testing.allocator, parser, s);
     defer source2.deinit();
     const result2 = try std.json.parseFromTokenSource(S, std.testing.allocator, &source2, .{ .allocate = .alloc_always });
     defer result2.deinit();
@@ -870,7 +870,7 @@ test "lifetimes copy" {
     @memcpy(s[17..21], "dlst");
     try std.testing.expectEqualStrings("noop", result2.value.dinner);
 
-    var another_source_2 = TapeTokenSource.initWithParser(b, parser);
+    var another_source_2 = TapeTokenSource.initWithParser(std.testing.allocator, parser, b);
     defer another_source_2.deinit();
     const another_2 = try std.json.parseFromTokenSource(S, std.testing.allocator, &another_source_2, .{});
     defer another_2.deinit();

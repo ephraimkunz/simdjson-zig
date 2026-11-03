@@ -24,6 +24,11 @@ pub const TapeParser = struct {
     inner: *sj.sj_parser,
     zero_copy: bool,
 
+    // Sentinel value that is used to generate errors if deinit is not called in debug allocators, which the inner sj_parser
+    // can't because allocations / frees / leaks happen on the C++ side which isn't hooked into Zig's allocators.
+    memory_warning: []u8,
+    allocator: std.mem.Allocator,
+
     pub const Options = struct {
         /// The size, in bytes, of largest document this parser can support.
         /// The parser may reallocate internal buffers as needed up to this amount as documents are passed to it.
@@ -43,7 +48,7 @@ pub const TapeParser = struct {
         zero_copy: bool = true,
     };
 
-    pub fn init(options: Options) TapeParserError!TapeParser {
+    pub fn init(allocator: std.mem.Allocator, options: Options) TapeParserError!TapeParser {
         var inner: ?*sj.sj_parser = null;
         err.check(sj.sj_parser_new(options.max_capacity, options.max_depth, &inner)) catch |e| {
             return switch (e) {
@@ -52,11 +57,21 @@ pub const TapeParser = struct {
                 else => error.Unknown,
             };
         };
-        return .{ .inner = inner.?, .zero_copy = options.zero_copy };
+        return .{
+            .inner = inner.?,
+            .zero_copy = options.zero_copy,
+            .memory_warning = allocator.alloc(u8, 1) catch |e| {
+                switch (e) {
+                    error.OutOfMemory => return error.MemAlloc,
+                }
+            },
+            .allocator = allocator,
+        };
     }
 
     pub fn deinit(self: TapeParser) void {
         sj.sj_parser_free(self.inner);
+        self.allocator.free(self.memory_warning);
     }
 };
 
@@ -77,6 +92,7 @@ pub const TapeTokenSourceError = error{
 /// This is a token source that can be passed into any function in [the std lib json namespace](https://ziglang.org/documentation/master/std/#std.json)
 /// that takes a generic source (a std.json.Reader or std.json.Scanner): [parseFromTokenSource](https://ziglang.org/documentation/master/std/#std.json.static.parseFromTokenSource), [parseFromTokenSourceLeaky](https://ziglang.org/documentation/master/std/#std.json.static.parseFromTokenSource), etc.
 pub const TapeTokenSource = struct {
+    allocator: std.mem.Allocator,
     s: []const u8,
     pos: usize = 1, // Skip the first r entry.
     // Used to temporarily store stringified numbers returned by reference, since they are already parsed in the tape but
@@ -96,16 +112,21 @@ pub const TapeTokenSource = struct {
     pub const AllocError = std.json.Scanner.AllocError;
 
     /// Use this function for convenience when only parsing one document.
-    pub fn init(s: []const u8) TapeTokenSource {
-        return .{ .s = s };
+    pub fn init(allocator: std.mem.Allocator, s: []const u8) TapeTokenSource {
+        return .{ .allocator = allocator, .s = s };
     }
 
     /// When parsing multiple documents, it's more efficient to reuse the parser, creating a
     /// new TapeTokenSource for each document but passing in the same parser.
     ///
     /// The parser may be shared by sources used one after another, never at the same time; see `TapeParser`.
-    pub fn initWithParser(s: []const u8, parser: TapeParser) TapeTokenSource {
-        return .{ .s = s, .parser = parser, .parser_externally_provided = true };
+    pub fn initWithParser(allocator: std.mem.Allocator, parser: TapeParser, s: []const u8) TapeTokenSource {
+        return .{
+            .allocator = allocator,
+            .s = s,
+            .parser = parser,
+            .parser_externally_provided = true,
+        };
     }
 
     /// Optionally call before using another method that will parse lazily on demand, to get the full error from a parse.
@@ -144,7 +165,7 @@ pub const TapeTokenSource = struct {
 
     fn parseAndCacheTape(self: *TapeTokenSource) TapeTokenSourceError!Tape {
         if (self.parser == null) {
-            self.parser = try TapeParser.init(.{});
+            self.parser = try TapeParser.init(self.allocator, .{});
         }
 
         err.check(sj.sj_parser_parse(self.parser.?.inner, self.s.ptr, self.s.len, self.parser.?.zero_copy)) catch |e| {
@@ -366,7 +387,7 @@ pub const TapeTokenSource = struct {
 };
 
 test TapeTokenSource {
-    var scanner = TapeTokenSource.init("{\"foo\": [123.0, 456, -154]}\n");
+    var scanner = TapeTokenSource.init(std.testing.allocator, "{\"foo\": [123.0, 456, -154]}\n");
     defer scanner.deinit();
     try std.testing.expectEqual(Token.object_begin, try scanner.next());
     try std.testing.expectEqualStrings("foo", (try scanner.next()).string);
@@ -381,13 +402,13 @@ test TapeTokenSource {
 
 test "zero copy" {
     const fixtures = @import("fixtures.zig");
-    const parser = try TapeParser.init(.{ .zero_copy = true });
+    const parser = try TapeParser.init(std.testing.allocator, .{ .zero_copy = true });
     defer parser.deinit();
-    var source = TapeTokenSource.initWithParser(fixtures.export_data, parser);
+    var source = TapeTokenSource.initWithParser(std.testing.allocator, parser, fixtures.export_data);
     defer source.deinit();
-    var c_parser = try TapeParser.init(.{ .zero_copy = false });
+    var c_parser = try TapeParser.init(std.testing.allocator, .{ .zero_copy = false });
     defer c_parser.deinit();
-    var c_source = TapeTokenSource.initWithParser(fixtures.export_data, c_parser);
+    var c_source = TapeTokenSource.initWithParser(std.testing.allocator, c_parser, fixtures.export_data);
     defer c_source.deinit();
     const result = try std.json.parseFromTokenSource(fixtures.Export, std.testing.allocator, &source, .{});
     defer result.deinit();
@@ -398,7 +419,7 @@ test "zero copy" {
 }
 
 test "max_alloc_len string" {
-    var scanner = TapeTokenSource.init("\"abcdefg\"");
+    var scanner = TapeTokenSource.init(std.testing.allocator, "\"abcdefg\"");
     defer scanner.deinit();
 
     // No alloc because we only do it if needed.
@@ -416,7 +437,7 @@ test "max_alloc_len string" {
 }
 
 test "max_alloc_len big int" {
-    var scanner = TapeTokenSource.init("99999999999999999999");
+    var scanner = TapeTokenSource.init(std.testing.allocator, "99999999999999999999");
     defer scanner.deinit();
 
     // No alloc because we only do it if needed.
@@ -434,7 +455,7 @@ test "max_alloc_len big int" {
 }
 
 test "max_alloc_len u64" {
-    var scanner = TapeTokenSource.init("12345");
+    var scanner = TapeTokenSource.init(std.testing.allocator, "12345");
     defer scanner.deinit();
 
     // Numbers eagerly allocated
@@ -451,7 +472,7 @@ test "max_alloc_len u64" {
 }
 
 test "max_alloc_len i64" {
-    var scanner = TapeTokenSource.init("-1234");
+    var scanner = TapeTokenSource.init(std.testing.allocator, "-1234");
     defer scanner.deinit();
 
     // Numbers eagerly allocated
@@ -468,7 +489,7 @@ test "max_alloc_len i64" {
 }
 
 test "max_alloc_len f64" {
-    var scanner = TapeTokenSource.init("1.234");
+    var scanner = TapeTokenSource.init(std.testing.allocator, "1.234");
     defer scanner.deinit();
 
     // Numbers eagerly allocated
@@ -485,14 +506,14 @@ test "max_alloc_len f64" {
 }
 
 test "inner parse" {
-    var scanner = TapeTokenSource.init("1234");
+    var scanner = TapeTokenSource.init(std.testing.allocator, "1234");
     defer scanner.deinit();
     const r = try (std.json.innerParse(u32, std.testing.allocator, &scanner, .{ .allocate = .alloc_always, .max_value_len = 15 }));
     try std.testing.expectEqual(1234, r);
 }
 
 test "token source lazily parses" {
-    var scanner = TapeTokenSource.init("1234");
+    var scanner = TapeTokenSource.init(std.testing.allocator, "1234");
     defer scanner.deinit();
     try std.testing.expectEqual(null, scanner.parser);
     try std.testing.expectEqual(null, scanner.cached_tape);
@@ -509,7 +530,7 @@ test "user-provided parser" {
         "{\"dinner\": \"chips\"}",
     };
 
-    const parser = try TapeParser.init(.{});
+    const parser = try TapeParser.init(std.testing.allocator, .{});
     defer parser.deinit();
 
     const S = struct { dinner: []const u8 };
@@ -517,7 +538,7 @@ test "user-provided parser" {
     defer results.deinit(std.testing.allocator);
 
     for (docs) |doc| {
-        var source = TapeTokenSource.initWithParser(doc, parser);
+        var source = TapeTokenSource.initWithParser(std.testing.allocator, parser, doc);
         defer source.deinit();
         const result = try std.json.parseFromTokenSource(S, std.testing.allocator, &source, .{});
         try results.append(std.testing.allocator, result);
@@ -538,10 +559,10 @@ test "user-provided parser" {
 test "max depth" {
     const fixtures = @import("fixtures.zig");
 
-    const parser = try TapeParser.init(.{ .max_depth = 1 });
+    const parser = try TapeParser.init(std.testing.allocator, .{ .max_depth = 1 });
     defer parser.deinit();
 
-    var tokenSource = TapeTokenSource.initWithParser(fixtures.export_data, parser);
+    var tokenSource = TapeTokenSource.initWithParser(std.testing.allocator, parser, fixtures.export_data);
     defer tokenSource.deinit();
 
     try std.testing.expectError(error.SyntaxError, std.json.parseFromTokenSource(fixtures.Export, std.testing.allocator, &tokenSource, .{}));
@@ -550,25 +571,25 @@ test "max depth" {
 test "max capacity" {
     const fixtures = @import("fixtures.zig");
 
-    const parser = try TapeParser.init(.{ .max_capacity = 100 });
+    const parser = try TapeParser.init(std.testing.allocator, .{ .max_capacity = 100 });
     defer parser.deinit();
 
-    var tokenSource = TapeTokenSource.initWithParser(fixtures.export_data, parser);
+    var tokenSource = TapeTokenSource.initWithParser(std.testing.allocator, parser, fixtures.export_data);
     defer tokenSource.deinit();
 
     try std.testing.expectError(error.SyntaxError, std.json.parseFromTokenSource(fixtures.Export, std.testing.allocator, &tokenSource, .{}));
 }
 
 test "zero max_depth" {
-    try std.testing.expectError(error.Capacity, TapeParser.init(.{ .max_depth = 0 }));
+    try std.testing.expectError(error.Capacity, TapeParser.init(std.testing.allocator, .{ .max_depth = 0 }));
 }
 
 test "large max_depth" {
-    try std.testing.expectError(error.Capacity, TapeParser.init(.{ .max_depth = 0xFFFFFFFF }));
+    try std.testing.expectError(error.Capacity, TapeParser.init(std.testing.allocator, .{ .max_depth = 0xFFFFFFFF }));
 }
 
 test "ensure parse" {
-    var source = TapeTokenSource.init("s: []const u8");
+    var source = TapeTokenSource.init(std.testing.allocator, "s: []const u8");
     defer source.deinit();
     try std.testing.expectError(TapeTokenSourceError.Syntax, source.ensureParse());
 }

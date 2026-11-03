@@ -14,8 +14,7 @@ pub fn validateUTF8(s: []const u8) bool {
 /// Scan the input and check for malformed JSON.
 /// Returns `error.OutOfMemory` if allocation fails or the input is too large.
 pub fn validate(allocator: std.mem.Allocator, s: []const u8) std.mem.Allocator.Error!bool {
-    _ = allocator;
-    const parser = TapeParser.init(.{}) catch |e| {
+    const parser = TapeParser.init(allocator, .{}) catch |e| {
         switch (e) {
             error.MemAlloc, error.Capacity => return error.OutOfMemory,
             else => return false,

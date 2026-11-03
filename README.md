@@ -71,7 +71,6 @@ very similar to the JSON APIs in the standard library. This allows us to reuse p
 * Finish readme
     * Doc memory usage:  Note that this simdjson functions uses more memory as it parses the entire JSON file in memory up front, instead of walking it on demand.
 * Reviews from Ziggit.
-* Find way to warn on not freeing tapeparser / tapetokensource, or provide way to run with `leaks`.
 * Mark zero-copy as experimental in doc + readme
 
 * Update lifetime docs:  “Lifetimes” section on the package, and a short example in the README.
