@@ -18,6 +18,8 @@ pub const TapeParserError = error{
 /// the parser once and reuse it for each parse by passing it to TapeTokenSource then to reconstruct it each time.
 /// Using TapeParser with the TapeTokenSource also allows you to customize parser behavior with options.
 /// Using TapeTokenSource without an explicit TapeParser is the same as using it with one with default Options, and no reuse-between calls.
+///
+/// Parsing a new document with this parser invalidates every `TapeTokenSource` and every token that uses it (that doesn't pass `alloc_always`).
 pub const TapeParser = struct {
     inner: *sj.sj_parser,
     zero_copy: bool,
@@ -74,8 +76,6 @@ pub const TapeTokenSourceError = error{
 // https://github.com/simdjson/simdjson/blob/master/doc/tape.md
 /// This is a token source that can be passed into any function in [the std lib json namespace](https://ziglang.org/documentation/master/std/#std.json)
 /// that takes a generic source (a std.json.Reader or std.json.Scanner): [parseFromTokenSource](https://ziglang.org/documentation/master/std/#std.json.static.parseFromTokenSource), [parseFromTokenSourceLeaky](https://ziglang.org/documentation/master/std/#std.json.static.parseFromTokenSource), etc.
-///
-/// Parsing a new document with this parser invalidates every `TapeTokenSource` and every token that uses it (that doesn't pass `alloc_always`).
 pub const TapeTokenSource = struct {
     s: []const u8,
     pos: usize = 1, // Skip the first r entry.
