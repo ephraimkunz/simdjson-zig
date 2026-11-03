@@ -14,7 +14,6 @@ These bindings support many of the features of simdjson:
 | [Bigint support](https://github.com/simdjson/simdjson/blob/master/doc/tape.md#big-integers) | ✅ |  |
 | [Minify](https://github.com/simdjson/simdjson/blob/master/doc/basics.md#minifying-json-strings-without-parsing) | ✅ |  |
 | [UTF8 Validation](https://github.com/simdjson/simdjson/blob/master/doc/basics.md#utf-8-validation-alone) | ✅ |  |
-| [Parse many](https://github.com/simdjson/simdjson/blob/master/doc/parse_many.md) | ✅ | Fast parsing of documents containing many small JSON objects. **TODO**: In progress |
 | Optional [zero copy parsing](https://github.com/simdjson/simdjson/blob/master/doc/dom.md#parsing-without-padding) |  ✅ | Sometimes zero copy is faster, sometimes it is slower, depends on the size of the input |
 | [OnDemand parsing](https://github.com/simdjson/simdjson/blob/master/doc/basics.md#the-basics-loading-and-parsing-json-documents) | ❌ | Supporting this would be difficult, see [Rust binding documentation](https://github.com/SunDoge/simdjson-rust#why-only-dom-not-ondemand) |
 | [Generating JSON output](https://github.com/simdjson/simdjson/blob/master/doc/builder.md) | ❌ | Uses C++ specific features |
@@ -71,8 +70,7 @@ very similar to the JSON APIs in the standard library. This allows us to reuse p
     * Doc memory usage:  Note that this simdjson functions uses more memory as it parses the entire JSON file in memory up front, instead of walking it on demand.
 * Reviews from Ziggit.
 
-* Test for threading...
-* Update lifetime docs:  “Lifetimes” section on TapeTokenSource, and a short example in the README.
+* Update lifetime docs:  “Lifetimes” section on the package, and a short example in the README.
 
 Lifetime is tied to the parser instance if alloc_if_needed, not the input, in zero copy and non-zero copy. If alloc_always is passed, lifetime is tied to the arena returned by std.json.Parsed. 
 

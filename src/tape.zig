@@ -117,13 +117,16 @@ pub const TapeTokenSource = struct {
         }
     }
 
-    fn tape(self: *TapeTokenSource) std.json.Scanner.Error!Tape {
+    const TapeError = std.json.Scanner.Error || std.mem.Allocator.Error;
+
+    fn tape(self: *TapeTokenSource) TapeError!Tape {
         if (self.cached_tape) |t| {
             return t;
         } else {
             return self.parseAndCacheTape() catch |e| {
                 return switch (e) {
-                    error.Depth, error.Capacity, error.MemAlloc, error.Syntax => error.SyntaxError,
+                    error.MemAlloc => error.OutOfMemory,
+                    error.Depth, error.Capacity, error.Syntax => error.SyntaxError,
                     error.Unknown => error.UnexpectedEndOfInput,
                 };
             };
@@ -184,7 +187,12 @@ pub const TapeTokenSource = struct {
 
     /// See [std.json.Scanner.peekNextTokenType()](https://ziglang.org/documentation/master/std/#std.json.Scanner.peekNextTokenType).
     pub fn peekNextTokenType(self: *TapeTokenSource) TapeTokenSource.PeekError!TokenType {
-        const t = try self.tape();
+        const t = self.tape() catch |e| {
+            return switch (e) {
+                error.OutOfMemory => error.SyntaxError, // Map to match stdlib API.
+                else => |to_return| to_return,
+            };
+        };
         if (self.pos >= t.tape.len) {
             // Matching what next() returns.
             return TokenType.end_of_document;

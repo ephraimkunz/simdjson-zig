@@ -24,7 +24,12 @@ pub fn validate(allocator: std.mem.Allocator, s: []const u8) std.mem.Allocator.E
         }
     };
     defer parser.deinit();
-    err.check(sj.sj_parser_parse(parser.inner, s.ptr, s.len, parser.zero_copy)) catch return false;
+    err.check(sj.sj_parser_parse(parser.inner, s.ptr, s.len, parser.zero_copy)) catch |e| {
+        switch (e) {
+            error.MemAlloc, error.Capacity => return error.OutOfMemory,
+            else => return false,
+        }
+    };
     return true;
 }
 
