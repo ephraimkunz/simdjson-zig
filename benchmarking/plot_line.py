@@ -26,7 +26,6 @@ import numpy as np
 from matplotlib.ticker import FuncFormatter, LogLocator, NullLocator
 
 
-
 # Inlined from hyperfine's scripts/plot_utils.py so this script is standalone.
 class Metric(NamedTuple):
     label: str
@@ -50,6 +49,8 @@ METRICS = {
     "cache_misses": Metric("Cache misses"),
     "branch_misses": Metric("Mispredicted branches"),
 }
+
+MEMORY_METRIC = "memory_peak_resident"
 
 
 def add_metric_argument(parser):
@@ -133,43 +134,22 @@ def format_throughput(value, _pos=None):
     return f"{value:g} MB/s"
 
 
-def main():
-    parser = argparse.ArgumentParser(description=__doc__)
-    add_metric_argument(parser)
-    parser.add_argument(
-        "files", nargs="+", type=pathlib.Path, help="JSON files with benchmark results"
-    )
-    parser.add_argument("--title", help="Plot Title")
-    parser.add_argument(
-        "--input-names",
-        nargs="+",
-        help="Labels for the x-axis points, in order of first appearance",
-    )
-    parser.add_argument(
-        "--variant-names",
-        nargs="+",
-        help="Labels for the lines, in order of first appearance",
-    )
-    parser.add_argument(
-        "--log-x",
-        action=argparse.BooleanOptionalAction,
-        help="Logarithmic x-axis (default: automatic when sizes span 2+ orders of magnitude)",
-    )
-    parser.add_argument(
-        "--throughput",
-        action="store_true",
-        help="Plot throughput (input size / time, in MB/s or GB/s) instead of time. "
-        "Requires a time metric and a size in every input name.",
-    )
-    parser.add_argument(
-        "--log-y",
-        action=argparse.BooleanOptionalAction,
-        help="Logarithmic y-axis (default: automatic when values span 2+ orders of magnitude)",
-    )
-    parser.add_argument("-o", "--output", help="Save image to the given filename")
+def format_mib(value, _pos=None):
+    """Format a memory size given in MiB as MiB or GiB."""
+    if value == 0:
+        return "0"
+    if abs(value) >= 1024:
+        return f"{value / 1024:g} GiB"
+    return f"{value:g} MiB"
 
-    args = parser.parse_args()
-    metric, datasets = load_results(parser, args.files, args.metric)
+
+def spans_orders(vals, orders=2):
+    vals = np.array([v for v in vals if np.isfinite(v) and v > 0])
+    return len(vals) > 1 and vals.max() / vals.min() >= 10**orders
+
+
+def make_chart(parser, args, datasets, metric, throughput=False, title=None):
+    """Build one figure for `metric` (one point per input, one line per variant)."""
     metric_info = METRICS[metric]
 
     # Each command looks like "<variant> < <input file>". Group by input file
@@ -191,7 +171,9 @@ def main():
                 inputs.append(input_name)
             if variant not in variants:
                 variants.append(variant)
-            values[(variant, input_name)] = b["summary"][metric]["mean"] / metric_info.scale
+            values[(variant, input_name)] = (
+                b["summary"][metric]["mean"] / metric_info.scale
+            )
 
     input_labels = args.input_names or inputs
     variant_labels = args.variant_names or variants
@@ -221,7 +203,7 @@ def main():
     tick_labels = args.input_names or default_labels
     order = np.argsort(x)
 
-    if args.throughput:
+    if throughput:
         if metric_info.unit != "s":
             parser.error("--throughput needs a time metric")
         if xlabel != "Input size":
@@ -234,18 +216,14 @@ def main():
     fig.set_figwidth(10)
     for variant, label in zip(variants, variant_labels):
         ys = np.array([values.get((variant, inp), np.nan) for inp in inputs])
-        if args.throughput:
+        if throughput:
             ys = x / ys  # x is the size in MB, ys the time in seconds
         ax.plot(x[order], ys[order], marker="o", label=label)
-
-    def spans_orders(vals, orders=2):
-        vals = np.array([v for v in vals if np.isfinite(v) and v > 0])
-        return len(vals) > 1 and vals.max() / vals.min() >= 10**orders
 
     log_x = args.log_x if args.log_x is not None else spans_orders(x)
     if args.log_y is not None:
         log_y = args.log_y
-    elif args.throughput:
+    elif throughput:
         log_y = False
     else:
         log_y = spans_orders(list(values.values()))
@@ -259,36 +237,97 @@ def main():
         rotation=45,
         ha="right",
         rotation_mode="anchor",
-    )   
+    )
     ax.minorticks_off()
 
-    # Time metrics: label ticks with readable units (ms, s, ...) and, on a log
-    # axis, add ticks at 1, 2 and 5 of each decade for finer granularity.
+    # Time and memory metrics: label ticks with readable units (ms, s, MiB,
+    # GiB, ...) and, on a log axis, add ticks at 1, 2 and 5 of each decade for
+    # finer granularity.
     is_time = metric_info.unit == "s"
-    if args.throughput:
+    is_memory = metric == MEMORY_METRIC
+    if throughput:
         if log_y:
             ax.yaxis.set_major_locator(LogLocator(base=10, subs=(1.0, 2.0, 5.0)))
             ax.yaxis.set_minor_locator(NullLocator())
         ax.yaxis.set_major_formatter(FuncFormatter(format_throughput))
         ax.set_ylim(bottom=None if log_y else 0)
-    elif is_time:
+    elif is_time or is_memory:
         if log_y:
             ax.yaxis.set_major_locator(LogLocator(base=10, subs=(1.0, 2.0, 5.0)))
             ax.yaxis.set_minor_locator(NullLocator())
-        ax.yaxis.set_major_formatter(FuncFormatter(format_seconds))
+        ax.yaxis.set_major_formatter(
+            FuncFormatter(format_seconds if is_time else format_mib)
+        )
     ax.grid(visible=True, axis="y")
 
-    if args.title:
-        plt.title(args.title)
-    plt.xlabel(xlabel)
-    if args.throughput:
-        plt.ylabel("Throughput")
+    if title:
+        ax.set_title(title)
+    ax.set_xlabel(xlabel)
+    if throughput:
+        ax.set_ylabel("Throughput")
+    elif is_time or is_memory:
+        ax.set_ylabel(metric_info.label)
     else:
-        plt.ylabel(metric_info.label if is_time else metric_info.axis_label)
-    plt.legend(title="Variant")
+        ax.set_ylabel(metric_info.axis_label)
+    ax.legend(title="Variant")
+    return fig
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    add_metric_argument(parser)
+    parser.add_argument(
+        "files", nargs="+", type=pathlib.Path, help="JSON files with benchmark results"
+    )
+    parser.add_argument(
+        "--input-names",
+        nargs="+",
+        help="Labels for the x-axis points, in order of first appearance",
+    )
+    parser.add_argument(
+        "--variant-names",
+        nargs="+",
+        help="Labels for the lines, in order of first appearance",
+    )
+    parser.add_argument(
+        "--log-x",
+        action=argparse.BooleanOptionalAction,
+        help="Logarithmic x-axis (default: automatic when sizes span 2+ orders of magnitude)",
+    )
+    parser.add_argument(
+        "--throughput",
+        action="store_true",
+        help="Plot throughput (input size / time, in MB/s or GB/s) instead of time. "
+        "Requires a time metric and a size in every input name.",
+    )
+    parser.add_argument(
+        "--log-y",
+        action=argparse.BooleanOptionalAction,
+        help="Logarithmic y-axis (default: automatic when values span 2+ orders of magnitude)",
+    )
+    parser.add_argument(
+        "-o",
+        "--output",
+        help="Save images instead of showing them: the speed chart goes to the "
+        "given filename and the memory chart to <name>_memory<ext>",
+    )
+
+    args = parser.parse_args()
+    metric, datasets = load_results(parser, args.files, args.metric)
+    for benchmarks in datasets:
+        validate_metric(parser, benchmarks, MEMORY_METRIC)
+
+    speed_fig = make_chart(
+        parser, args, datasets, metric, args.throughput, title="Speed"
+    )
+    memory_fig = make_chart(
+        parser, args, datasets, MEMORY_METRIC, False, title="Memory Usage"
+    )
 
     if args.output:
-        plt.savefig(args.output)
+        out = pathlib.Path(args.output)
+        speed_fig.savefig(out)
+        memory_fig.savefig(out.with_name(f"{out.stem}_memory{out.suffix}"))
     else:
         plt.show()
 

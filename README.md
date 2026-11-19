@@ -67,6 +67,7 @@ very similar to the JSON APIs in the standard library. This allows us to reuse p
 * Benchmark large, small, mmap, zero copy, Reusing / perf of tapeparser?
 * Benchmarks sections showing speed vs c++ impl direct and std.json 
 
+* consider exposing padding functions to avoid copies and speed things up?
 * Update simdjson readme with a reference.
 * Finish readme
     * Doc memory usage:  Note that this simdjson functions uses more memory as it parses the entire JSON file in memory up front, instead of walking it on demand.
