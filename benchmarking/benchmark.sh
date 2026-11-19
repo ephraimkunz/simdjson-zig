@@ -1,8 +1,10 @@
+# Data from https://fastjsonviewer.com/json-generator.html
+
 zig build -Doptimize=ReleaseFast
 
 hyperfine \
     --shell=default \
-    --parameter-list input data_2mb,data_5mb,data_10mb,data_25mb,data_50mb,data_100mb,data_250mb,data_500mb,data_1gb \
+    --parameter-list input data_1kb,data_10kb,data_50kb,data_100kb,data_250kb,data_500kb,data_1mb,data_2mb,data_5mb,data_10mb,data_25mb,data_50mb,data_100mb,data_250mb,data_500mb,data_1gb,data_1500mb \
     --warmup=3 \
     --export-json output.json \
     "../zig-out/bin/simdjson validate < {input}.json" \

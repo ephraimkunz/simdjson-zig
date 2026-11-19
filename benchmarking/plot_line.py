@@ -253,7 +253,13 @@ def main():
         ax.set_xscale("log")
     if log_y:
         ax.set_yscale("log")
-    ax.set_xticks(x[order], [tick_labels[i] for i in order])
+    ax.set_xticks(
+        x[order],
+        [tick_labels[i] for i in order],
+        rotation=45,
+        ha="right",
+        rotation_mode="anchor",
+    )   
     ax.minorticks_off()
 
     # Time metrics: label ticks with readable units (ms, s, ...) and, on a log
