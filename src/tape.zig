@@ -40,9 +40,8 @@ pub const TapeParser = struct {
         /// The default used here is what the simdjson library uses as a default.
         max_depth: usize = 1024,
 
-        /// If zero_copy is set, performance may be slower but more memory efficient, since the buffer isn't copied and
-        /// padded internally when parsing. Otherwise, performance may be faster but may use more memory. Speed and memory
-        /// use depend on the size of the file being parsed, and sometimes zero_copy may be preferable.
+        /// If zero_copy is set, the buffer isn't copied and padded internally when parsing. In performance testing
+        /// zero_copy used less memory and seemed to operate at about the same speed.
         /// See https://github.com/simdjson/simdjson/blob/master/doc/dom.md#parsing-without-padding
         /// https://simdjson.github.io/simdjson/classsimdjson_1_1dom_1_1parser.html#a8a27c6955bc5b542890b2c4825ee917c
         zero_copy: bool = true,

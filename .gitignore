@@ -1,6 +1,6 @@
 .zig-cache/
 zig-out/
 zig-pkg/
-benchmarking/original/
 benchmarking/*.json
+benchmarking/*.png
 **/cli
