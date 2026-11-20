@@ -4,7 +4,7 @@ Zig bindings to [simdjson](https://github.com/simdjson/simdjson/tree/master), a 
 [View the docs](https://ephraimkunz.github.io/simdjson-zig/#docs.simdjson)
 
 
-The current version supported is [5.1.1](https://github.com/simdjson/simdjson/releases/tag/v5.1.1).
+The current version supported is [5.2](https://github.com/simdjson/simdjson/releases/tag/v5.2).
 
 These bindings support many of the features of simdjson:
 
