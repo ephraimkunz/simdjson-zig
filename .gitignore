@@ -3,4 +3,3 @@ zig-out/
 zig-pkg/
 benchmarking/*.json
 benchmarking/*.png
-**/cli
