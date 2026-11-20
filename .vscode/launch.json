@@ -10,8 +10,8 @@
             "type": "lldb",
             "request": "launch",
             "program": "${workspaceRoot}/zig-out/bin/simdjson",
-            "args": ["validate"],
-            "cwd": "${workspaceRoot}"
+            "args": ["parse_twitter"],
+            "cwd": "${workspaceRoot}/benchmarking"
         }
     ]
 }

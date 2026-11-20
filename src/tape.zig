@@ -91,6 +91,7 @@ pub const TapeTokenSourceError = error{
 // https://github.com/simdjson/simdjson/blob/master/doc/tape.md
 /// This is a token source that can be passed into any function in [the std lib json namespace](https://ziglang.org/documentation/master/std/#std.json)
 /// that takes a generic source (a std.json.Reader or std.json.Scanner): [parseFromTokenSource](https://ziglang.org/documentation/master/std/#std.json.static.parseFromTokenSource), [parseFromTokenSourceLeaky](https://ziglang.org/documentation/master/std/#std.json.static.parseFromTokenSource), etc.
+/// TapeTokenSource should be created anew for each object to be parsed.
 pub const TapeTokenSource = struct {
     allocator: std.mem.Allocator,
     s: []const u8,

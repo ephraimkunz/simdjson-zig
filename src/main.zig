@@ -38,16 +38,11 @@ pub fn main(init: std.process.Init) !u8 {
         return 1;
     };
 
-    var buf: [4096]u8 = undefined;
-    var reader = std.Io.File.stdin().reader(io, &buf);
-    // var reader = (try std.Io.Dir.cwd().openFile(io, "data_1gb.json", .{ .mode = .read_only })).reader(io, &buf);
-    const stdin = &reader.interface;
-    const input = try stdin.readAllocShort(allocator, 2_000_000_000);
-    defer allocator.free(input);
-    try ensureEndOfStream(stdin);
-
     switch (subcommand) {
         .validate => {
+            const input = try readStdin(allocator, io);
+            defer allocator.free(input);
+
             var is_valid: bool = undefined;
             if (use_std_lib) {
                 is_valid = try std.json.Scanner.validate(allocator, input);
@@ -64,6 +59,9 @@ pub fn main(init: std.process.Init) !u8 {
             }
         },
         .minify => {
+            const input = try readStdin(allocator, io);
+            defer allocator.free(input);
+
             var minified: []u8 = undefined;
             const out_buf = try allocator.alloc(u8, input.len);
             defer allocator.free(out_buf);
@@ -81,7 +79,69 @@ pub fn main(init: std.process.Init) !u8 {
             try Io.File.stdout().writeStreamingAll(io, "\n");
             return 0;
         },
+        .parse_twitter => {
+            const input = try readFile(allocator, io, "twitter.json");
+            defer allocator.free(input);
+
+            if (use_std_lib) {
+                for (0..1000) |_| {
+                    const parsed = try std.json.parseFromSlice(TwitterData, allocator, input, .{ .ignore_unknown_fields = true });
+                    defer parsed.deinit();
+                }
+            } else {
+                const parser = try sj.TapeParser.init(allocator, .{});
+                defer parser.deinit();
+                for (0..1000) |_| {
+                    var token_source = sj.TapeTokenSource.initWithParser(allocator, parser, input);
+                    defer token_source.deinit();
+                    const parsed = try std.json.parseFromTokenSource(TwitterData, allocator, &token_source, .{ .ignore_unknown_fields = true });
+                    defer parsed.deinit();
+                }
+            }
+
+            return 0;
+        },
     }
+}
+
+const User = struct {
+    id: u64,
+    name: []u8,
+    screen_name: []u8,
+    location: []u8,
+    description: []u8,
+    verified: bool,
+    followers_count: u64,
+    friends_count: u64,
+    statuses_count: u64,
+};
+
+const Status = struct {
+    created_at: []u8,
+    id: u64,
+    text: []u8,
+    user: User,
+    retweet_count: u64,
+    favorite_count: u64,
+};
+
+const TwitterData = struct {
+    statuses: []Status,
+};
+
+// Caller owns returned slice.
+fn readFile(allocator: std.mem.Allocator, io: std.Io, filename: []const u8) ![]u8 {
+    return try std.Io.Dir.cwd().readFileAlloc(io, filename, allocator, .unlimited);
+}
+
+// Caller owns returned slice.
+fn readStdin(allocator: std.mem.Allocator, io: std.Io) ![]u8 {
+    var buf: [4096]u8 = undefined;
+    var reader = std.Io.File.stdin().reader(io, &buf);
+    const stdin = &reader.interface;
+    const input = try stdin.readAllocShort(allocator, 2_000_000_000);
+    try ensureEndOfStream(stdin);
+    return input;
 }
 
 // Ensures there are no bytes left in the stream. If there are, or we can't determine
@@ -108,16 +168,14 @@ const Subcommand = struct {
     type: Type,
     description: []const u8,
 
-    const Type = enum {
-        validate,
-        minify,
-    };
+    const Type = enum { validate, minify, parse_twitter };
 };
 
 const Subcommands = struct {
     const commands = [_]Subcommand{
         .{ .type = .validate, .description = "return 0 if valid JSON, otherwise 1. Outputs true or false on stdout." },
         .{ .type = .minify, .description = "return 0 on success, otherwise non 0. Outputs minified JSON on stdout." },
+        .{ .type = .parse_twitter, .description = "return 0 it can parse input into TwitterData, otherwise non 0." },
     };
 
     fn usage(comptime leading: []const u8) []const u8 {
