@@ -86,20 +86,13 @@ Additionally, the Zig binding adds new API for functionality simdjson exposes th
 * `fn minify(str: []const u8, out_buf: []u8) MinifyError![]u8` to minify JSON strings without parsing.
 * `pub fn validateUTF8(str: []const u8) bool` to validate that a sequence of bytes are UTF-8 encoded.
 
-## Tips for speed
-**TODO**
-* Reuse the parser by using APIs which take a token source, rather than those that take just a string to parse from?
-* Memory upper limits or fixed capacity for long-runnign services. 
-* See [simdjson docs](https://github.com/simdjson/simdjson/blob/master/doc/performance.md) for more ideas.
-
 ## How it works
-simdjson parses a JSON document in two stages: stage1 scans the input with SIMD to find structural characters, stage2 builds a [flat tape](https://github.com/simdjson/simdjson/blob/master/doc/tape.md) — an array of 64-bit words encoding every value with its type tag and payload, plus a side string buffer holding all (already-unescaped) string bytes.
+simdjson parses a JSON document in two stages: stage1 scans the input with SIMD to find structural characters, and stage2 builds a [flat tape](https://github.com/simdjson/simdjson/blob/master/doc/tape.md). This tape is an array of 64-bit words encoding every value with its type tag and payload, plus a side string buffer holding all (already-unescaped) string bytes.
 
-This package exposes that tape through a C wrapper around the original simdjson C++ code, then implements higher-level functionality to walk it and expose it through APIs 
-very similar to the JSON APIs in the standard library. This allows us to reuse parsing code in the std library and maintain familiar APIs, but all on top of a simd-accelerated tape backend.
+This package, similar to the [Rust simdjson binding](https://github.com/SunDoge/simdjson-rust), exposes that tape through a C wrapper around the original simdjson C++ code (since Zig can't bind natively to C++), then implements higher-level functionality to walk it in Zig. This allows us to minimize the FFI crossings for efficiency, reuse parsing code in the std library, and provide a familiar API shape and drop-in replacement capabilities, all on top of a simd-accelerated backend.
 
 
-**TODO**: 
+## TODO: 
 * benchmark vs yyjson / std.json
 * Benchmark large, small, mmap, zero copy, Reusing / perf of tapeparser?
 * Benchmarks sections showing speed vs c++ impl direct and std.json 
