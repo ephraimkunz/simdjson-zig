@@ -42,9 +42,9 @@ pub fn main(init: std.process.Init) !void {
 See the [examples](examples/) directory for more examples.
 
 ## Features
-The current version of simdjson this binding wraps is [5.2](https://github.com/simdjson/simdjson/releases/tag/v5.2).
+The library wraps simdjson version [5.2](https://github.com/simdjson/simdjson/releases/tag/v5.2).
 
-These bindings support many of the features of simdjson:
+We support many of the features of simdjson:
 
 | **simdjson feature** | **Supported in simdjson-zig** | **Notes** |
 |---|---|---|
