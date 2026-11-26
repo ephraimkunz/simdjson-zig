@@ -61,15 +61,15 @@ Many simdjson features are supported:
 
 ## Interoperability with Zig JSON APIs
 This library strives to provide a drop-in replacement to the Zig standard library JSON API, allowing you to speed up JSON parsing without having to change much code.
-Simply stop importing `std.json` and instead import `simdjson`.
+Simply stop importing `std.json` and instead import `simdjson`. See the [API docs](https://ephraimkunz.github.io/simdjson-zig/#docs.simdjson) for more information.
 
-The supported parsing functions use the same error sets as `std.json`, but the specific error returned for invalid input can differ
-because the parsers detect errors at different stages.
+The drop-in parsing functions use the same error sets as `std.json` to ensure API compatibility, but the specific errors returned for invalid input can differ
+because the simdjson's parser detects errors at different stages from std.json's parser.
 
-Numeric behavior follows simdjson's tape representation. Decimal and exponent forms are converted to `f64` before conversion to the
-requested Zig type. This can reduce precision or affect integer conversion, including when `parse_numbers = false`. Numbers outside
+Numeric behavior follows simdjson's [tape](https://github.com/simdjson/simdjson/blob/master/doc/tape.md) representation. Decimal and exponent forms are converted to `f64` before conversion to the
+requested Zig type, which can reduce precision or affect integer conversion, including when setting `parse_numbers = false` in [ParseOptions](https://ziglang.org/documentation/master/std/#std.json.static.ParseOptions). Numbers outside
 the finite `f64` range may be rejected. Large integer literals without a decimal point or exponent are preserved as text through
-bigint support. Original numeric spelling and negative zero are not always preserved.
+[bigint](https://github.com/simdjson/simdjson/blob/master/doc/tape.md#big-integers) support. Original numeric spelling and negative zero are not always preserved.
 
 **TODO** Example.
 
