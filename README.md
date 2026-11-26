@@ -1,9 +1,47 @@
 # simdjson-zig
 Zig bindings to [simdjson](https://github.com/simdjson/simdjson/tree/master), a SIMD-accelerated JSON parser written in C++.
 
-[View the docs](https://ephraimkunz.github.io/simdjson-zig/#docs.simdjson)
+[API docs](https://ephraimkunz.github.io/simdjson-zig/#docs.simdjson)
 
+## Quickstart
+### Installation
+Requires Zig 0.17.0 or newer.
 
+```sh
+zig fetch --save git+https://github.com/ephraimkunz/simdjson-zig#main
+```
+Then add to your `build.zig`:
+```zig
+const simdjson = b.dependency("simdjson", .{
+    .target = target,
+    .optimize = optimize,
+});
+
+exe.root_module.addImport("simdjson", simdjson.module("simdjson"));
+```
+
+### Hello World
+```zig
+const std = @import("std");
+const sj = @import("simdjson");
+
+pub fn main(init: std.process.Init) !void {
+    const json =
+        \\ { "name": "Jim Jones", "age": 32 }
+    ;
+
+    const Identity = struct { name: []u8, age: u8 };
+
+    const parsed = try sj.parseFromSlice(Identity, init.gpa, json, .{});
+    defer parsed.deinit();
+
+    std.debug.print("Name: {s}, age: {d}\n", .{ parsed.value.name, parsed.value.age });
+}
+```
+
+See the [examples](examples/) directory for more examples.
+
+## Features
 The current version supported is [5.2](https://github.com/simdjson/simdjson/releases/tag/v5.2).
 
 These bindings support many of the features of simdjson:

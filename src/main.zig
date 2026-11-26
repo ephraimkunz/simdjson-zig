@@ -84,14 +84,14 @@ pub fn main(init: std.process.Init) !u8 {
             defer allocator.free(input);
 
             if (use_std_lib) {
-                for (0..1000) |_| {
+                for (0..10000) |_| {
                     const parsed = try std.json.parseFromSlice(TwitterData, allocator, input, .{ .ignore_unknown_fields = true });
                     defer parsed.deinit();
                 }
             } else {
                 const parser = try sj.TapeParser.init(allocator, .{});
                 defer parser.deinit();
-                for (0..1000) |_| {
+                for (0..10000) |_| {
                     var token_source = sj.TapeTokenSource.initWithParser(allocator, parser, input);
                     defer token_source.deinit();
                     const parsed = try std.json.parseFromTokenSource(TwitterData, allocator, &token_source, .{ .ignore_unknown_fields = true });

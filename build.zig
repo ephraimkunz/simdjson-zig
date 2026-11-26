@@ -43,8 +43,7 @@ pub fn build(b: *std.Build) void {
     });
     mod.linkLibrary(simdjson_cpp_lib);
 
-    // Here we define an executable. An executable needs to have a root module
-    // which needs to expose a `main` function.
+    // This executable is a CLI that can minify, validate, and parse certain json files for benchmarks shown in the README.md
     const exe = b.addExecutable(.{
         .name = "simdjson",
         .root_module = b.createModule(.{
@@ -78,6 +77,38 @@ pub fn build(b: *std.Build) void {
     // command itself, like this: `zig build run -- arg1 arg2 etc`
     run_cmd.addPassthruArgs();
 
+    // Examples
+    const examples = [_][]const u8{
+        "hello_world",
+    };
+
+    for (examples) |example_name| {
+        const example = b.addExecutable(.{
+            .name = example_name,
+            .root_module = b.createModule(.{
+                .root_source_file = b.path(b.fmt("examples/{s}.zig", .{example_name})),
+                .target = target,
+                .optimize = optimize,
+                .imports = &.{
+                    .{ .name = "simdjson", .module = mod },
+                },
+            }),
+        });
+
+        const install_example = b.addInstallArtifact(example, .{});
+        b.getInstallStep().dependOn(&install_example.step);
+
+        const run_example_cmd = b.addRunArtifact(example);
+        run_example_cmd.step.dependOn(&install_example.step);
+
+        const run_example_step = b.step(
+            b.fmt("run-{s}", .{example_name}),
+            b.fmt("Run the {s} example", .{example_name}),
+        );
+        run_example_step.dependOn(&run_example_cmd.step);
+    }
+
+    // Unit tests
     const mod_tests = b.addTest(.{
         .root_module = mod,
     });
