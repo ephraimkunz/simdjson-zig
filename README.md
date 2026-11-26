@@ -64,7 +64,14 @@ The API can be split into two parts: (1) drop-in replacements for the Zig standa
 
 ### Interoperability with Zig JSON APIs
 This library strives to provide a drop-in replacement to the Zig standard library JSON API, allowing you to speed up JSON parsing without having to change much code.
-Simply stop importing `std.json` and instead import `simdjson`. See the [API docs](https://ephraimkunz.github.io/simdjson-zig/#docs.simdjson) for more information.
+Simply stop importing `std.json` and instead import `simdjson`, or import them both and mix and match.
+| **Zig standard library API** | **Identical API in simdjson-zig** | **Notes** |
+|---|---|---|
+| [parseFromSlice](https://ziglang.org/documentation/master/std/#std.json.static.parseFromSlice) | ✅ | Always behaves as if ParseOptions.allocate == .alloc_always, as it can't return references to the original slice due to the way simdjson works. |
+| [parseFromSliceLeaky](https://ziglang.org/documentation/master/std/#std.json.static.parseFromSliceLeaky) | ✅ | Always behaves as if ParseOptions.allocate == .alloc_always, as it can't return references to the original slice due to the way simdjson works. |
+| [validate](https://ziglang.org/documentation/master/std/#std.json.Scanner.validate) | ✅ |  |
+
+The `TapeTokenSource` type can also be used directly or passed into any std.json functions that take a token source, such as [parseFromTokenSource](https://ziglang.org/documentation/master/std/#std.json.static.parseFromTokenSource) and [parseFromTokenSourceLeaky](https://ziglang.org/documentation/master/std/#std.json.static.parseFromTokenSourceLeaky).
 
 The drop-in parsing functions use the same error sets as `std.json` to ensure API compatibility, but the specific errors returned for invalid input can differ
 because the simdjson's parser detects errors at different stages from std.json's parser.
@@ -73,16 +80,6 @@ Numeric behavior follows simdjson's [tape](https://github.com/simdjson/simdjson/
 requested Zig type, which can reduce precision or affect integer conversion, including when setting `parse_numbers = false` in [ParseOptions](https://ziglang.org/documentation/master/std/#std.json.static.ParseOptions). Numbers outside
 the finite `f64` range may be rejected. Large integer literals without a decimal point or exponent are preserved as text through
 [bigint](https://github.com/simdjson/simdjson/blob/master/doc/tape.md#big-integers) support. Original numeric spelling and negative zero are not always preserved.
-
-**TODO** Example.
-
-| **Zig standard library API** | **Identical API in simdjson-zig** | **Notes** |
-|---|---|---|
-| [parseFromSlice](https://ziglang.org/documentation/master/std/#std.json.static.parseFromSlice) | ✅ | Always behaves as if ParseOptions.allocate == .alloc_always, as it can't return references to the original slice due to the way simdjson works. |
-| [parseFromSliceLeaky](https://ziglang.org/documentation/master/std/#std.json.static.parseFromSliceLeaky) | ✅ | Always behaves as if ParseOptions.allocate == .alloc_always, as it can't return references to the original slice due to the way simdjson works. |
-| [validate](https://ziglang.org/documentation/master/std/#std.json.Scanner.validate) | ✅ |  |
-
-The `TapeTokenSource` type can also be used directly or passed into any std.json functions that take a token source, such as [parseFromTokenSource](https://ziglang.org/documentation/master/std/#std.json.static.parseFromTokenSource) and [parseFromTokenSourceLeaky](https://ziglang.org/documentation/master/std/#std.json.static.parseFromTokenSourceLeaky).
 
 ### Additional API
 Additionally, the Zig binding adds new API for functionality simdjson exposes that the standard library doesn't:
