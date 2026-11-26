@@ -85,8 +85,6 @@ the finite `f64` range may be rejected. Large integer literals without a decimal
 Additionally, the Zig binding adds new API for functionality simdjson exposes that the standard library doesn't:
 * `fn minify(str: []const u8, out_buf: []u8) MinifyError![]u8` to minify JSON strings without parsing.
 * `pub fn validateUTF8(str: []const u8) bool` to validate that a sequence of bytes are UTF-8 encoded.
-* `pub fn validate(allocator: Allocator, s: []const u8) std.mem.Allocator.Error!bool` to scan the input and check for malformed JSON.
-
 
 ## Tips for speed
 **TODO**
