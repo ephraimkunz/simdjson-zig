@@ -52,11 +52,12 @@ Many simdjson features are supported:
 | [Bigint support](https://github.com/simdjson/simdjson/blob/master/doc/tape.md#big-integers) | ✅ | |
 | [Minify](https://github.com/simdjson/simdjson/blob/master/doc/basics.md#minifying-json-strings-without-parsing) | ✅ |  |
 | [UTF8 Validation](https://github.com/simdjson/simdjson/blob/master/doc/basics.md#utf-8-validation-alone) | ✅ |  |
-| [Zero copy parsing](https://github.com/simdjson/simdjson/blob/master/doc/dom.md#parsing-without-padding) |  ✅ | The default, but an option is provided for opting out |
-| [OnDemand parsing](https://github.com/simdjson/simdjson/blob/master/doc/basics.md#the-basics-loading-and-parsing-json-documents) | ❌ | Supporting this would be difficult, see [Rust binding documentation](https://github.com/SunDoge/simdjson-rust#why-only-dom-not-ondemand) for an explanation of why |
-| [Generating JSON output](https://github.com/simdjson/simdjson/blob/master/doc/builder.md) | ❌ | Uses C++ specific features |
-| [Compile-time parsing](https://github.com/simdjson/simdjson/blob/master/doc/compile_time.md) | ❌ | Uses C++ specific features (and Zig does not allow calling across FFI boundaries at comptime) |
-| Any other feature of simdjson | ❌ | Most of these require C++ specific features that we can't expose cleanly through a binding  |
+| [Zero copy parsing](https://github.com/simdjson/simdjson/blob/master/doc/dom.md#parsing-without-padding) |  ✅ | The default, but an option is provided for opting out. |
+| Ability to limit [maximum memory capacity](https://simdjson.github.io/simdjson/classsimdjson_1_1dom_1_1parser.html#a6977b4586bc601070cf100e2973a4cbc) and [maximum nesting depth](https://simdjson.github.io/simdjson/classsimdjson_1_1dom_1_1parser.html#ab090f596cd0b0c1d34576fd6aae88ee5) of parser | ✅ | |
+| [OnDemand parsing](https://github.com/simdjson/simdjson/blob/master/doc/basics.md#the-basics-loading-and-parsing-json-documents) | ❌ | Supporting this would be difficult, see [Rust binding documentation](https://github.com/SunDoge/simdjson-rust#why-only-dom-not-ondemand) for an explanation of why. |
+| [Generating JSON output](https://github.com/simdjson/simdjson/blob/master/doc/builder.md) | ❌ | Uses C++ specific features. |
+| [Compile-time parsing](https://github.com/simdjson/simdjson/blob/master/doc/compile_time.md) | ❌ | Uses C++ specific features (and Zig does not allow calling across FFI boundaries at comptime). |
+| Any other feature of simdjson | ❌ | Most of these require C++ specific features that we can't expose cleanly through a binding. Additional requests for specific feature support will be considered, however.  |
 
 ## Interoperability with Zig JSON APIs
 This library strives to provide a drop-in replacement to the Zig standard library JSON API, allowing you to speed up JSON parsing without having to change much code.
