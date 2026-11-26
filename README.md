@@ -59,7 +59,10 @@ Many simdjson features are supported:
 | [Compile-time parsing](https://github.com/simdjson/simdjson/blob/master/doc/compile_time.md) | ❌ | Uses C++ specific features (and Zig does not allow calling across FFI boundaries at comptime). |
 | Any other feature of simdjson | ❌ | Most of these require C++ specific features that we can't expose cleanly through a binding. Additional requests for specific feature support will be considered, however.  |
 
-## Interoperability with Zig JSON APIs
+## API
+The API can be split into two parts: (1) drop-in replacements for the Zig standard library JSON API, and (2) some additional SIMD-accelerated APIs provided by simdjson.
+
+### Interoperability with Zig JSON APIs
 This library strives to provide a drop-in replacement to the Zig standard library JSON API, allowing you to speed up JSON parsing without having to change much code.
 Simply stop importing `std.json` and instead import `simdjson`. See the [API docs](https://ephraimkunz.github.io/simdjson-zig/#docs.simdjson) for more information.
 
@@ -82,6 +85,7 @@ the finite `f64` range may be rejected. Large integer literals without a decimal
 |  | ❌ |  |
 |  |  |  |
 
+### Additional API
 Additionally, the Zig binding adds new API for functionality simdjson exposes that the standard library doesn't:
 * `fn minify(str: []const u8, out_buf: []u8) MinifyError![]u8` to minify JSON strings without parsing.
 * `pub fn validateUTF8(str: []const u8) bool` to validate that a sequence of bytes are UTF-8 encoded.
