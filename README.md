@@ -82,7 +82,15 @@ the finite `f64` range may be rejected. Large integer literals without a decimal
 [bigint](https://github.com/simdjson/simdjson/blob/master/doc/tape.md#big-integers) support. Original numeric spelling and negative zero are not always preserved.
 
 #### Lifetimes
+The lifetime of a parsed object depends on if alloc_always or alloc_if_needed is passed to ParseOptions.alloc. 
 
+If alloc_if_needed is passed, the lifetime of a parsed object is tied to TapeParser. That means that a parsed object should not outlive the TapeParser that created it (the parser shouldn't be reused or deallocated while its objects are alive). This differs from std.json.Scanner / Reader's lifetime, which is tied to the input slice if alloc_if_needed is passed.
+
+If alloc_always is passed, the lifetime of the parsed object is tied to the arena returned by std.json.Parsed.
+
+`parseFromSlice` and `parseFromSliceLeaky` internally use a TapeParser instance that is allocated and deallocated before the functions return, so they force alloc_always internally.
+
+Similar to std.json.Scanner/ Reader, simdjson-zig's TapeTokenSource should not be reused after a parse completes. Parsing the input slice is lazy: TapeTokenSource.init and TapeTokenSource.initWithParser only store the passed-in slice, and the document is parsed on the first token or peek. The input slice must not be freed or modified between init() and the end of parsing.
 
 ### Additional API
 Additionally, the Zig binding adds new API for functionality simdjson exposes that the standard library doesn't:
@@ -131,20 +139,3 @@ This package, similar to the [Rust simdjson binding](https://github.com/SunDoge/
 * Reviews from Ziggit.
 * Tag for release
 * Add anything to the docs that is in the README but not the docs.
-
-* Update lifetime docs:  “Lifetimes” section on the package, and a short example in the README.
-
-
-
-Lifetime is tied to the parser instance if alloc_if_needed, not the input, in zero copy and non-zero copy. If alloc_always is passed, lifetime is tied to the arena returned by std.json.Parsed. 
-
-This differs from std.json's lifetime, which is tied to the input if alloc_if_needed.
-parseFromSlice internally uses a parser instance that is allocated and deallocated, so it forces alloc_always. You can get around this by using parseFromTokenSource with your own parser + alloc_if_needed.
-
-/// - Parsing is lazy: init() only stores the slice, and the document is parsed on the
-///   first token or peek. The input must not be freed or modified between init() and
-///   the end of parsing, not just during init().
-/// - Tokens never point into your input. Strings from next() (and from nextAlloc* with
-///   .alloc_if_needed) point into the parser's buffer, valid until that parser parses
-///   another document or is freed.
-/// - Values produced by std.json with .alloc_always own their memory and outlive the parser.

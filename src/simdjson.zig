@@ -18,6 +18,18 @@
 //!
 //! Parse into a dynamically-typed `Value` to load any JSON value for runtime inspection.
 //!
+//! ## Lifetimes
+//! The lifetime of a parsed object depends on if alloc_always or alloc_if_needed is passed to ParseOptions.alloc.
+//!
+//! If alloc_if_needed is passed, the lifetime of a parsed object is tied to TapeParser. That means that a parsed object should not outlive the TapeParser that created it (the parser shouldn't be reused or deallocated while its objects are alive). This differs from std.json.Scanner / Reader's lifetime, which is tied to the input slice if alloc_if_needed is passed.
+//!
+//! If alloc_always is passed, the lifetime of the parsed object is tied to the arena returned by std.json.Parsed.
+//!
+//! `parseFromSlice` and `parseFromSliceLeaky` internally use a TapeParser instance that is allocated and deallocated before the functions return, so they force alloc_always internally.
+//!
+//! Similar to std.json.Scanner/ Reader, simdjson-zig's TapeTokenSource should not be reused after a parse completes. Parsing the input slice is lazy: TapeTokenSource.init and TapeTokenSource.initWithParser only store the passed-in slice, and the document is parsed on the first token or peek. The input slice must not be freed or modified between init() and the end of parsing.
+//!
+
 const std = @import("std");
 
 pub const parseFromSlice = @import("parse.zig").parseFromSlice;
