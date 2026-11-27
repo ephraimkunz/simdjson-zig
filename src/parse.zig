@@ -317,6 +317,134 @@ test "scientific notation" {
     try std.testing.expectEqual(5e37, val.value);
 }
 
+fn expectNumberMatchesStd(comptime T: type, source: []const u8) !void {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const allocator = arena.allocator();
+
+    const expected = std.json.parseFromSliceLeaky(T, allocator, source, .{});
+    const actual = parseFromSliceLeaky(T, allocator, source, .{});
+    std.testing.expectEqual(expected, actual) catch |e| {
+        std.debug.print("parsing {s} into {s}\n", .{ source, @typeName(T) });
+        return e;
+    };
+}
+
+fn parseNumberValue(allocator: std.mem.Allocator, source: []const u8, parse_numbers: bool) !std.json.Value {
+    return parseFromSliceLeaky(std.json.Value, allocator, source, .{ .parse_numbers = parse_numbers });
+}
+
+test "numbers: same result as std.json" {
+    const sources = [_][]const u8{
+        "0",                    "0.0",                    "-0.0",                 "1.0",
+        "1e2",                  "1E2",                    "1.5",                  "0.1",
+        "123.0",                "456",                    "9007199254740993",     "-9223372036854775808",
+        "-9223372036854775809", "18446744073709551615",   "18446744073709551616", "99999999999999999999",
+        "1e30",                 "1.7976931348623157e308",
+    };
+    for (sources) |source| {
+        try expectNumberMatchesStd(i64, source);
+        try expectNumberMatchesStd(u64, source);
+        try expectNumberMatchesStd(u128, source);
+        try expectNumberMatchesStd(f64, source);
+    }
+}
+
+test "numbers: integer literal negative zero loses its sign" {
+    const ours = try parseFromSlice(f64, std.testing.allocator, "-0", .{});
+    defer ours.deinit();
+    try std.testing.expect(!std.math.signbit(ours.value));
+
+    const stdlib = try std.json.parseFromSlice(f64, std.testing.allocator, "-0", .{});
+    defer stdlib.deinit();
+    try std.testing.expect(std.math.signbit(stdlib.value));
+
+    const decimal = try parseFromSlice(f64, std.testing.allocator, "-0.0", .{});
+    defer decimal.deinit();
+    try std.testing.expect(std.math.signbit(decimal.value));
+
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    try std.testing.expectEqual(0, (try parseNumberValue(arena.allocator(), "-0", true)).integer);
+    try std.testing.expect((try std.json.parseFromSliceLeaky(std.json.Value, arena.allocator(), "-0", .{})) == .float);
+}
+
+test "numbers: outside the finite f64 range" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const allocator = arena.allocator();
+
+    for ([_][]const u8{ "1e400", "-1e400" }) |source| {
+        try std.testing.expectError(error.SyntaxError, parseFromSliceLeaky(f64, allocator, source, .{}));
+        try std.testing.expectError(error.SyntaxError, parseFromSliceLeaky(f128, allocator, source, .{}));
+        try std.testing.expectError(error.SyntaxError, parseFromSliceLeaky(u128, allocator, source, .{}));
+        try std.testing.expectError(error.SyntaxError, parseNumberValue(allocator, source, true));
+        try std.testing.expectError(error.SyntaxError, parseNumberValue(allocator, source, false));
+
+        try std.testing.expect(std.math.isInf(try std.json.parseFromSliceLeaky(f64, allocator, source, .{})));
+    }
+
+    try std.testing.expectEqual(0, try parseFromSliceLeaky(f64, allocator, "1e-400", .{}));
+    try std.testing.expectEqual(0, try parseFromSliceLeaky(f128, allocator, "1e-400", .{}));
+    try std.testing.expectEqual(0, try parseFromSliceLeaky(i64, allocator, "1e-400", .{}));
+    try std.testing.expectError(error.InvalidNumber, std.json.parseFromSliceLeaky(i64, allocator, "1e-400", .{}));
+}
+
+test "numbers: decimal and exponent forms are limited to f64 precision" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const allocator = arena.allocator();
+
+    try std.testing.expectEqual(9007199254740992, try parseFromSliceLeaky(i64, allocator, "9007199254740993.0", .{}));
+    try std.testing.expectEqual(9007199254740993, try std.json.parseFromSliceLeaky(i64, allocator, "9007199254740993.0", .{}));
+    try std.testing.expectEqual(9007199254740993, try parseFromSliceLeaky(i64, allocator, "9007199254740993", .{}));
+
+    const digits = "0.1234567890123456789012345678901234";
+    const ours = try parseFromSliceLeaky(f128, allocator, digits, .{});
+    const stdlib = try std.json.parseFromSliceLeaky(f128, allocator, digits, .{});
+    try std.testing.expectEqual(0.1234567890123456789012345678901234, stdlib);
+    // The f64 is re-printed in its shortest round-trip form, and those digits are what the wider type sees.
+    try std.testing.expectEqual(0.12345678901234568, ours);
+    try std.testing.expectEqual(@as(f64, 0.1234567890123456789012345678901234), @as(f64, @floatCast(ours)));
+
+    try std.testing.expectEqual(340282366920938463463374607431768211455, try parseFromSliceLeaky(u128, allocator, "340282366920938463463374607431768211455", .{}));
+}
+
+test "numbers: parse_numbers = false does not preserve decimal spelling" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const allocator = arena.allocator();
+
+    const cases = [_]struct { source: []const u8, expected: []const u8 }{
+        .{ .source = "456", .expected = "456" },
+        .{ .source = "-9223372036854775808", .expected = "-9223372036854775808" },
+        .{ .source = "99999999999999999999", .expected = "99999999999999999999" },
+        .{ .source = "1e2", .expected = "1e2" },
+        .{ .source = "1E2", .expected = "1e2" },
+        .{ .source = "123.0", .expected = "1.23e2" },
+        .{ .source = "0.1", .expected = "1e-1" },
+        .{ .source = "-0.0", .expected = "-0e0" },
+        .{ .source = "-0", .expected = "0" },
+        .{ .source = "1e-400", .expected = "0e0" },
+    };
+    for (cases) |case| {
+        try std.testing.expectEqualStrings(case.expected, (try parseNumberValue(allocator, case.source, false)).number_string);
+    }
+}
+
+test "numbers: std.json.Value variant" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const allocator = arena.allocator();
+
+    try std.testing.expectEqual(456, (try parseNumberValue(allocator, "456", true)).integer);
+    try std.testing.expectEqual(-9223372036854775808, (try parseNumberValue(allocator, "-9223372036854775808", true)).integer);
+    try std.testing.expectEqual(123.0, (try parseNumberValue(allocator, "123.0", true)).float);
+    try std.testing.expectEqual(1e30, (try parseNumberValue(allocator, "1e30", true)).float);
+    try std.testing.expectEqualStrings("18446744073709551615", (try parseNumberValue(allocator, "18446744073709551615", true)).number_string);
+    try std.testing.expectEqualStrings("99999999999999999999", (try parseNumberValue(allocator, "99999999999999999999", true)).number_string);
+}
+
 const Person = struct {
     name: []const u8,
     city: []const u8,
@@ -475,6 +603,10 @@ test "another large one" {
     const fixtures = @import("fixtures.zig");
     const result = try parseFromSlice(fixtures.Export, std.testing.allocator, fixtures.export_data, .{});
     defer result.deinit();
+
+    const expected = try std.json.parseFromSlice(fixtures.Export, std.testing.allocator, fixtures.export_data, .{});
+    defer expected.deinit();
+    try std.testing.expectEqualDeep(expected.value, result.value);
 }
 
 test "parseFromTokenSource" {
