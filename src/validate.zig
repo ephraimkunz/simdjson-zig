@@ -4,8 +4,8 @@ const TapeParser = @import("tape.zig").TapeParser;
 const err = @import("error.zig");
 
 /// The UTF-8 validation function merely checks that the input is valid UTF-8: it works with strings in general, not just JSON strings.
-pub fn validateUTF8(s: []const u8) bool {
-    return sj.sj_validate_utf8(s.ptr, s.len);
+pub fn validateUTF8(str: []const u8) bool {
+    return sj.sj_validate_utf8(str.ptr, str.len);
 }
 
 /// This function matches the prototype of the [std.json.validate](https://ziglang.org/documentation/master/std/#std.json.Scanner.validate) function,

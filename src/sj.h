@@ -21,7 +21,7 @@ typedef struct {
     uint8_t *string_buf_ptr; // We don't store the length, don't need it and it's expensive to calculate.
 } sj_tape;
 
-// Create a parser, allocating new memory. Should be freed when done with js_parser_free. This parser internally allocates
+// Create a parser, allocating new memory. Should be freed when done with sj_parser_free. This parser internally allocates
 // additional memory when sj_parser_parse is called. Should be reused if possible for performance.
 int sj_parser_new(size_t max_capacity, size_t max_depth, sj_parser **out_parser);
 
@@ -29,9 +29,11 @@ int sj_parser_new(size_t max_capacity, size_t max_depth, sj_parser **out_parser)
 void sj_parser_free(sj_parser *p);
 
 // Parse the input string. Should only be called once for a given input string, as it parses all in one go.
-// If zero_copy is set, performance may be slower but more memory efficient, since the buffer isn't copied and 
-// padded internally. Otherwise, performance may be faster but may use more memory. 
+// If zero_copy is set, the buffer isn't copied and padded internally when parsing. In performance testing
+// zero_copy used less memory and seemed to operate at about the same speed. The simdjson documentation marks
+// zero_copy as experimental.
 // See https://github.com/simdjson/simdjson/blob/master/doc/dom.md#parsing-without-padding
+// https://simdjson.github.io/simdjson/classsimdjson_1_1dom_1_1parser.html#a8a27c6955bc5b542890b2c4825ee917c
 int sj_parser_parse(sj_parser *p, const char *buf, size_t len, bool zero_copy);
 
 // View into sj_parser, so must not outlive that as it references data in the parser. No need to free anything

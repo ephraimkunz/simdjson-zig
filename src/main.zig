@@ -33,7 +33,7 @@ pub fn main(init: std.process.Init) !u8 {
     const subcommand = std.meta.stringToEnum(Subcommand.Type, args[subcommand_index]) orelse {
         var writer = Io.File.stderr().writer(io, &.{});
         const stderr = &writer.interface;
-        try stderr.print("\"{s}\" is not a valid subcommand.\n\nOptions are:\n{s}\n", .{ args[1], Subcommands.usage("  ") });
+        try stderr.print("\"{s}\" is not a valid subcommand.\n\nOptions are:\n{s}\n", .{ args[subcommand_index], Subcommands.usage("  ") });
 
         return 1;
     };
@@ -175,7 +175,7 @@ const Subcommands = struct {
     const commands = [_]Subcommand{
         .{ .type = .validate, .description = "return 0 if valid JSON, otherwise 1. Outputs true or false on stdout." },
         .{ .type = .minify, .description = "return 0 on success, otherwise non 0. Outputs minified JSON on stdout." },
-        .{ .type = .parse_twitter, .description = "return 0 it can parse input into TwitterData, otherwise non 0." },
+        .{ .type = .parse_twitter, .description = "return 0 it can parse twitter.json into TwitterData, otherwise non 0." },
     };
 
     fn usage(comptime leading: []const u8) []const u8 {

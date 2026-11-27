@@ -78,7 +78,7 @@ test "parseFromSlice fails" {
     try std.testing.expectError(error.UnexpectedToken, stdlib_result);
 }
 
-test "parseFromSlice fails 2" {
+test "parseFromSlice fails no quotes" {
     const source =
         \\ { "this is a test"  :
         \\ value        }

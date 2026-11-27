@@ -57,6 +57,7 @@ pub const TapeParser = struct {
                 else => error.Unknown,
             };
         };
+        errdefer sj.sj_parser_free(inner); // In case we return an error below.
         return .{
             .inner = inner.?,
             .zero_copy = options.zero_copy,
@@ -112,13 +113,15 @@ pub const TapeTokenSource = struct {
     pub const SkipError = std.json.Scanner.SkipError;
     pub const AllocError = std.json.Scanner.AllocError;
 
-    /// Use this function for convenience when only parsing one document.
+    /// Use this function for convenience when only parsing one document. Internally it creates a TapeParser
+    /// that is freed in deinit.
     pub fn init(allocator: std.mem.Allocator, s: []const u8) TapeTokenSource {
         return .{ .allocator = allocator, .s = s };
     }
 
     /// When parsing multiple documents, it's more efficient to reuse the parser, creating a
-    /// new TapeTokenSource for each document but passing in the same parser.
+    /// new TapeTokenSource for each document but passing in the same parser. An externally-passed
+    /// TapeParser is not freed in deinit and it is the caller's responsibility to manage the lifetime.
     ///
     /// The parser may be shared by sources used one after another, never at the same time; see `TapeParser`.
     pub fn initWithParser(allocator: std.mem.Allocator, parser: TapeParser, s: []const u8) TapeTokenSource {
@@ -593,4 +596,9 @@ test "ensure parse" {
     var source = TapeTokenSource.init(std.testing.allocator, "s: []const u8");
     defer source.deinit();
     try std.testing.expectError(TapeTokenSourceError.Syntax, source.ensureParse());
+}
+
+test "failing allocator" {
+    var alloc = std.testing.FailingAllocator.init(std.testing.allocator, .{ .fail_index = 0 });
+    try std.testing.expectError(error.MemAlloc, TapeParser.init(alloc.allocator(), .{}));
 }

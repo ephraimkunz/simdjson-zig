@@ -2,6 +2,9 @@
 #include <new>
 #include "../vendor/simdjson.h"
 
+// If this fails we need to update error.zig.
+static_assert(simdjson::NUM_ERROR_CODES == 34); 
+
 struct sj_parser {
     simdjson::dom::parser parser;
 };

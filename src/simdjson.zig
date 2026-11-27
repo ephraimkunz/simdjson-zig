@@ -9,6 +9,11 @@
 //! Note that memory usage might change (it's usually higher with simdjson) as well as performance (it's usually higher with simdjson). Furthermore, while the drop-in replacements have the same error sets as the std library functions,
 //! different errors from those sets may be returned from simdjson and the stdlib for a given JSON document, due to an inexact mapping between simdjson errors and stdlib errors and internal differences around when parsing steps happen.
 //!
+//! Numeric behavior follows simdjson's [tape](https://github.com/simdjson/simdjson/blob/master/doc/tape.md) representation. Decimal and exponent forms are converted to `f64` before conversion to the
+//! requested Zig type, which can reduce precision or affect integer conversion, including when setting `parse_numbers = false` in [ParseOptions](https://ziglang.org/documentation/master/std/#std.json.static.ParseOptions). Numbers outside
+//! the finite `f64` range may be rejected. Large integer literals without a decimal point or exponent are preserved as text through
+//! [bigint](https://github.com/simdjson/simdjson/blob/master/doc/tape.md#big-integers) support. Original numeric spelling and negative zero are not always preserved.
+//!
 //! In addition to the drop-in functions above, this package exposes simd-accelerated `validateUTF8` and `minify` functions.
 //!
 //! For lower-level control, the `TapeTokenSource` can be used directly or passed into any std.json functions that take a token source, such as `std.json.parseFromTokenSource`.
@@ -16,10 +21,10 @@
 //! that allows you to more efficiently parse multiple JSON documents (by reusing the same TapeParser) and control memory
 //! and nesting limits.
 //!
-//! Parse into a dynamically-typed `Value` to load any JSON value for runtime inspection.
+//! Parse into a dynamically-typed `std.json.Value` to load any JSON value for runtime inspection.
 //!
 //! ## Lifetimes
-//! The lifetime of a parsed object depends on if alloc_always or alloc_if_needed is passed to ParseOptions.alloc.
+//! The lifetime of a parsed object depends on if alloc_always or alloc_if_needed is passed to ParseOptions.allocate.
 //!
 //! If alloc_if_needed is passed, the lifetime of a parsed object is tied to TapeParser. That means that a parsed object should not outlive the TapeParser that created it (the parser shouldn't be reused or deallocated while its objects are alive). This differs from std.json.Scanner / Reader's lifetime, which is tied to the input slice if alloc_if_needed is passed.
 //!

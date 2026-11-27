@@ -27,7 +27,7 @@ jobs:
       - uses: mlugg/setup-zig@v2
         with:
           version: ${{ matrix.zig }}
-      - run: zig build
+      - run: zig build && zig build docs
 
   test:
     strategy:
@@ -45,7 +45,7 @@ jobs:
 
   # Debug catches overflow and bounds violations by panicking; the release
   # modes are where a wrong assumption turns into wrong output instead. Run
-  # both, on Linux only, since these catch codegen and safety differences
+  # both since these catch codegen and safety differences
   # rather than platform ones.
   test-release:
     strategy:
