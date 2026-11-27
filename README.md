@@ -42,7 +42,7 @@ pub fn main(init: std.process.Init) !void {
 See the [examples](examples/) directory for more examples.
 
 ## Features
-The library wraps simdjson version [5.2](https://github.com/simdjson/simdjson/releases/tag/v5.2).
+The library wraps simdjson version [5.3](https://github.com/simdjson/simdjson/releases/tag/v5.3).
 
 Many simdjson features are supported:
 
@@ -99,6 +99,8 @@ Additionally, the Zig binding adds new API for functionality simdjson exposes th
 
 ## Performance
 simdjson-zig performs at nearly double the speed of the Zig standard library JSON API, at the cost of using more memory. simdjson functions use more memory as it parses the entire JSON file in memory up front, instead of walking it on demand, in return for higher parsing speed.
+
+The benchmarks below were all performed on an Apple M1 Pro with 32 GB RAM.
 
 ### Validating files of various sizes
 This benchmark starts a new process, reads a JSON file from stdin into an in-memory buffer, validates it using either simdjson `validate` or standard library `validate`, and returns `true` or `false` depending on if it's valid to stdout.
