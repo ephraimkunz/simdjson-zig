@@ -206,6 +206,12 @@ pub const TapeTokenSource = struct {
         fn init(c_tape: sj.sj_tape) Tape {
             return .{ .tape = c_tape.tape_ptr[0..c_tape.tape_len], .string_buf = c_tape.string_buf_ptr };
         }
+
+        fn stringAt(self: Tape, entry: u64) []const u8 {
+            const index: usize = @intCast(entry & 0x00FF_FFFF_FFFF_FFFF);
+            const len = std.mem.readInt(u32, self.string_buf[index..][0..4], .little);
+            return self.string_buf[index + 4 ..][0..len];
+        }
     };
 
     const NextAllocStrategy = union(enum) {
@@ -257,8 +263,7 @@ pub const TapeTokenSource = struct {
         switch (val >> 56) {
             'l', 'u', 'd' => self.pos += 1,
             '[', '{' => {
-                const x = val & 0x0000_0000_ffff_ffff;
-                self.pos = x;
+                self.pos = @as(u32, @truncate(val));
             },
             else => {},
         }
@@ -317,9 +322,7 @@ pub const TapeTokenSource = struct {
             '}' => return Token.object_end,
             'r' => return Token.end_of_document,
             '"' => {
-                const index = 0x00FF_FFFF_FFFF_FFFF & val;
-                const len = std.mem.readInt(u32, t.string_buf[index .. index + 4][0..4], .little);
-                const s = t.string_buf[index + 4 .. index + 4 + len];
+                const s = t.stringAt(val);
 
                 switch (when) {
                     .alloc_always => |allocator| {
@@ -333,9 +336,7 @@ pub const TapeTokenSource = struct {
                 }
             },
             'Z' => {
-                const index = 0x00FF_FFFF_FFFF_FFFF & val;
-                const len = std.mem.readInt(u32, t.string_buf[index .. index + 4][0..4], .little);
-                const s = t.string_buf[index + 4 .. index + 4 + len];
+                const s = t.stringAt(val);
 
                 return switch (when) {
                     .alloc_always => |allocator| if (s.len > max_value_len orelse std.math.maxInt(usize))

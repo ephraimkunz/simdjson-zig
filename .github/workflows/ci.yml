@@ -61,3 +61,12 @@ jobs:
         with:
           version: ${{ matrix.zig }}
       - run: zig build test -Doptimize=${{ matrix.optimize }}
+
+  # usize is 32 bits here and simdjson tape entries are 64, so this catches
+  # index code that only type-checks on 64-bit hosts.
+  test-32bit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: mlugg/setup-zig@v2
+      - run: zig build test -Dtarget=x86-linux-musl
