@@ -1,0 +1,63 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  fmt:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: mlugg/setup-zig@v2
+      - run: zig fmt --check src examples build.zig
+
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+        zig: [0.17.0, 0.17.1]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: mlugg/setup-zig@v2
+        with:
+          version: ${{ matrix.zig }}
+      - run: zig build
+
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+        zig: [0.17.0, 0.17.1]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: mlugg/setup-zig@v2
+        with:
+          version: ${{ matrix.zig }}
+      - run: zig build test
+
+  # Debug catches overflow and bounds violations by panicking; the release
+  # modes are where a wrong assumption turns into wrong output instead. Run
+  # both, on Linux only, since these catch codegen and safety differences
+  # rather than platform ones.
+  test-release:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+        optimize: [ReleaseSafe, ReleaseFast]
+        zig: [0.17.0, 0.17.1]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: mlugg/setup-zig@v2
+        with:
+          version: ${{ matrix.zig }}
+      - run: zig build test -Doptimize=${{ matrix.optimize }}

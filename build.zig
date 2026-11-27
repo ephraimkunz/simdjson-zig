@@ -77,6 +77,9 @@ pub fn build(b: *std.Build) void {
     // command itself, like this: `zig build run -- arg1 arg2 etc`
     run_cmd.addPassthruArgs();
 
+    // Add test step here so it can depend on the examples, making sure they all build when running tests.
+    const test_step = b.step("test", "Run tests");
+
     // Examples
     const examples = [_][]const u8{
         "hello_world",
@@ -106,6 +109,7 @@ pub fn build(b: *std.Build) void {
             b.fmt("Run the {s} example", .{example_name}),
         );
         run_example_step.dependOn(&run_example_cmd.step);
+        test_step.dependOn(&example.step);
     }
 
     // Unit tests
@@ -119,9 +123,6 @@ pub fn build(b: *std.Build) void {
     const run_mod_tests = b.addRunArtifact(mod_tests);
     const run_exe_tests = b.addRunArtifact(exe_tests);
 
-    // Since the two run steps do not depend on one another, this will
-    // make the two of them run in parallel.
-    const test_step = b.step("test", "Run tests");
     test_step.dependOn(&run_mod_tests.step);
     test_step.dependOn(&run_exe_tests.step);
 

@@ -52,7 +52,7 @@ Many simdjson features are supported:
 | [Bigint support](https://github.com/simdjson/simdjson/blob/master/doc/tape.md#big-integers) | ✅ | |
 | [Minify](https://github.com/simdjson/simdjson/blob/master/doc/basics.md#minifying-json-strings-without-parsing) | ✅ |  |
 | [UTF8 Validation](https://github.com/simdjson/simdjson/blob/master/doc/basics.md#utf-8-validation-alone) | ✅ |  |
-| [Zero copy parsing](https://github.com/simdjson/simdjson/blob/master/doc/dom.md#parsing-without-padding) |  ✅ | The default, but an option is provided for opting out. |
+| [Zero copy parsing](https://github.com/simdjson/simdjson/blob/master/doc/dom.md#parsing-without-padding) |  ✅ | The default in this library, but an option is provided for opting out. [simdjson docs](https://simdjson.github.io/simdjson/classsimdjson_1_1dom_1_1parser.html#a8a27c6955bc5b542890b2c4825ee917c) mark this API as experimental. |
 | Ability to limit [maximum memory capacity](https://simdjson.github.io/simdjson/classsimdjson_1_1dom_1_1parser.html#a6977b4586bc601070cf100e2973a4cbc) and [maximum nesting depth](https://simdjson.github.io/simdjson/classsimdjson_1_1dom_1_1parser.html#ab090f596cd0b0c1d34576fd6aae88ee5) of parser | ✅ | |
 | [OnDemand parsing](https://github.com/simdjson/simdjson/blob/master/doc/basics.md#the-basics-loading-and-parsing-json-documents) | ❌ | Supporting this would be difficult, see [Rust binding documentation](https://github.com/SunDoge/simdjson-rust#why-only-dom-not-ondemand) for an explanation of why. |
 | [Generating JSON output](https://github.com/simdjson/simdjson/blob/master/doc/builder.md) | ❌ | Uses C++ specific features. |
@@ -81,15 +81,16 @@ requested Zig type, which can reduce precision or affect integer conversion, inc
 the finite `f64` range may be rejected. Large integer literals without a decimal point or exponent are preserved as text through
 [bigint](https://github.com/simdjson/simdjson/blob/master/doc/tape.md#big-integers) support. Original numeric spelling and negative zero are not always preserved.
 
+#### Lifetimes
+
+
 ### Additional API
 Additionally, the Zig binding adds new API for functionality simdjson exposes that the standard library doesn't:
 * `fn minify(str: []const u8, out_buf: []u8) MinifyError![]u8` to minify JSON strings without parsing.
 * `pub fn validateUTF8(str: []const u8) bool` to validate that a sequence of bytes are UTF-8 encoded.
 
 ## Performance
-simdjson-zig performs at nearly double the speed of the Zig standard library JSON API, at the cost of using more memory.
-
-The benchmarks used are below and can be run locally via `zig build run-benchmark`.
+simdjson-zig performs at nearly double the speed of the Zig standard library JSON API, at the cost of using more memory. simdjson functions use more memory as it parses the entire JSON file in memory up front, instead of walking it on demand, in return for higher parsing speed.
 
 ### Validating files of various sizes
 This benchmark starts a new process, reads a JSON file from stdin into an in-memory buffer, validates it using either simdjson `validate` or standard library `validate`, and returns `true` or `false` depending on if it's valid to stdout.
@@ -117,20 +118,23 @@ simdjson parses a JSON document in two stages: stage1 scans the input with SIMD 
 
 This package, similar to the [Rust simdjson binding](https://github.com/SunDoge/simdjson-rust), exposes that tape through a C wrapper around the original simdjson C++ code (since Zig can't bind natively to C++), then implements higher-level functionality to walk it in Zig. This allows us to minimize the FFI crossings for efficiency, reuse parsing code in the std library, and provide a familiar API shape and drop-in replacement capabilities, all on top of a simd-accelerated backend.
 
+## Local development
+`./build_and_view_docs.sh`: Generate documentation and open a local webpage to browse docs
+`zig build test`: Run unit tests
+`zig build test --fuzz`: Run the fuzz tests
+`zig build run`: Run the CLI, which has subcommands for minifying, validating, and parsing twitter.json
+`zig build run-<example filename>`: Run the example file
+`cd benchmarking && ./benchmark.sh`: Runs the benchmark and generates the graphs for the README performance section
 
 ## TODO: 
-* benchmark vs yyjson / std.json
-* Benchmark large, small, mmap, zero copy, Reusing / perf of tapeparser?
-* Benchmarks sections showing speed vs c++ impl direct and std.json 
-
-* consider exposing padding functions to avoid copies and speed things up?
 * Update simdjson readme with a reference.
-* Finish readme
-    * Doc memory usage:  Note that this simdjson functions uses more memory as it parses the entire JSON file in memory up front, instead of walking it on demand.
 * Reviews from Ziggit.
-* Mark zero-copy as experimental in doc + readme
+* Tag for release
+* Add anything to the docs that is in the README but not the docs.
 
 * Update lifetime docs:  “Lifetimes” section on the package, and a short example in the README.
+
+
 
 Lifetime is tied to the parser instance if alloc_if_needed, not the input, in zero copy and non-zero copy. If alloc_always is passed, lifetime is tied to the arena returned by std.json.Parsed. 
 
