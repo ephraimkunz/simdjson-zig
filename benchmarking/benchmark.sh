@@ -30,5 +30,5 @@ hyperfine \
     "../zig-out/bin/simdjson parse_twitter" \
     "../zig-out/bin/simdjson --use-std-lib parse_twitter" \
 
-# 1000 iterations of parsing this file
+# 10,000 iterations of parsing this file
 uv run plot_bar.py output.json --size "$(( $(stat -f%z twitter.json) * 10000 ))" --no-error-bars --output parse_twitter.png

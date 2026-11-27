@@ -86,6 +86,32 @@ Additionally, the Zig binding adds new API for functionality simdjson exposes th
 * `fn minify(str: []const u8, out_buf: []u8) MinifyError![]u8` to minify JSON strings without parsing.
 * `pub fn validateUTF8(str: []const u8) bool` to validate that a sequence of bytes are UTF-8 encoded.
 
+## Performance
+simdjson-zig performs at nearly double the speed of the Zig standard library JSON API, at the cost of using more memory.
+
+The benchmarks used are below and can be run locally via `zig build run-benchmark`.
+
+### Validating files of various sizes
+This benchmark starts a new process, reads a JSON file from stdin into an in-memory buffer, validates it using either simdjson `validate` or standard library `validate`, and returns `true` or `false` depending on if it's valid to stdout.
+Validate basically parses the entire JSON file and return an error if one was encountered during parsing. All JSON files tested are valid.
+This benchmark is repeated across multiple files of various sizes. Because it involves process launch and teardown, reading from the filesystem, and allocating
+memory, it's a more realistic example of how long it would take to read and parse a JSON file than a "hot loop" JSON parse microbenchmark (see below).
+
+![Validate memory usage](benchmarking/validate_memory.png)
+![Validate speed](benchmarking/validate.png)
+
+### Minifying files of various sizes
+This benchmark has the same basic setup as the validate benchmark above, except that instead of validating JSON, it minifies the JSON read from stdin and outputs the minified JSON to stdout. Because the standard library doesn't have a minify function, this is implmented by parsing the JSON, then outputting it with the `.minified` option. As a result, the JSON is validated along the way. The simdjson minify implementation minifies without parsing or validating of the JSON, so it is expected to do much less work.
+
+![Minify memory usage](benchmarking/minify_memory.png)
+![Minify speed](benchmarking/minify.png)
+
+### Parsing JSON in a hot loop
+This is a microbenchmark showing how fast JSON is parsed in a hot loop. It measures the cost of starting a new process, reading a JSON file from stdin into an in-memory buffer (twitter.json), then parsing that JSON using parseFromSlice into a struct 10,000 times back-to-back. While the GB/s number is likely to be higher than what you'd see in practice, it shows an upper bound on pure JSON parsing performance.
+
+![Parsing memory usage](benchmarking/parse_twitter_memory.png)
+![Parsing speed](benchmarking/parse_twitter.png)
+
 ## How it works
 simdjson parses a JSON document in two stages: stage1 scans the input with SIMD to find structural characters, and stage2 builds a [flat tape](https://github.com/simdjson/simdjson/blob/master/doc/tape.md). This tape is an array of 64-bit words encoding every value with its type tag and payload, plus a side string buffer holding all (already-unescaped) string bytes.
 
