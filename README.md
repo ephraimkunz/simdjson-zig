@@ -136,8 +136,3 @@ This package, similar to the [Rust simdjson binding](https://github.com/SunDoge/
 * `zig build run`: Run the CLI, which has subcommands for minifying, validating, and parsing twitter.json
 * `zig build run-<example filename>`: Run the example file
 * `cd benchmarking && ./benchmark.sh`: Runs the benchmark and generates the graphs for the README performance section
-
-## TODO: 
-* Update simdjson readme with a reference to this one.
-* Reviews from Ziggit.
-* Tag for release
