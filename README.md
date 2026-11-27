@@ -129,12 +129,12 @@ simdjson parses a JSON document in two stages: stage1 scans the input with SIMD 
 This package, similar to the [Rust simdjson binding](https://github.com/SunDoge/simdjson-rust), exposes that tape through a C wrapper around the original simdjson C++ code (since Zig can't bind natively to C++), then implements higher-level functionality to walk it in Zig. This allows us to minimize the FFI crossings for efficiency, reuse parsing code in the std library, and provide a familiar API shape and drop-in replacement capabilities, all on top of a simd-accelerated backend.
 
 ## Local development
-`./build_and_view_docs.sh`: Generate documentation and open a local webpage to browse docs
-`zig build test`: Run unit tests
-`zig build test --fuzz`: Run the fuzz tests
-`zig build run`: Run the CLI, which has subcommands for minifying, validating, and parsing twitter.json
-`zig build run-<example filename>`: Run the example file
-`cd benchmarking && ./benchmark.sh`: Runs the benchmark and generates the graphs for the README performance section
+* `./build_and_view_docs.sh`: Generate documentation and open a local webpage to browse docs
+* `zig build test`: Run unit tests
+* `zig build test --fuzz`: Run the fuzz tests
+* `zig build run`: Run the CLI, which has subcommands for minifying, validating, and parsing twitter.json
+* `zig build run-<example filename>`: Run the example file
+* `cd benchmarking && ./benchmark.sh`: Runs the benchmark and generates the graphs for the README performance section
 
 ## TODO: 
 * Update simdjson readme with a reference to this one.
