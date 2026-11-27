@@ -127,7 +127,7 @@ This package, similar to the [Rust simdjson binding](https://github.com/SunDoge/
 `cd benchmarking && ./benchmark.sh`: Runs the benchmark and generates the graphs for the README performance section
 
 ## TODO: 
-* Update simdjson readme with a reference.
+* Update simdjson readme with a reference to this one.
 * Reviews from Ziggit.
 * Tag for release
 * Add anything to the docs that is in the README but not the docs.
@@ -141,17 +141,10 @@ Lifetime is tied to the parser instance if alloc_if_needed, not the input, in ze
 This differs from std.json's lifetime, which is tied to the input if alloc_if_needed.
 parseFromSlice internally uses a parser instance that is allocated and deallocated, so it forces alloc_always. You can get around this by using parseFromTokenSource with your own parser + alloc_if_needed.
 
-/// If true (default), parse in place without making simdjson's padded copy.
-/// Faster and uses less memory on large inputs; no measurable difference on tiny ones.
-
-zig
-/// Lifetimes
-///
 /// - Parsing is lazy: init() only stores the slice, and the document is parsed on the
 ///   first token or peek. The input must not be freed or modified between init() and
 ///   the end of parsing, not just during init().
 /// - Tokens never point into your input. Strings from next() (and from nextAlloc* with
 ///   .alloc_if_needed) point into the parser's buffer, valid until that parser parses
-///   another document or is freed. Numbers are formatted into a scratch buffer and are
-///   valid only until the next call.
+///   another document or is freed.
 /// - Values produced by std.json with .alloc_always own their memory and outlive the parser.

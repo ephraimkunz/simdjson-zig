@@ -416,7 +416,7 @@ test "zero copy" {
     const c_result = try std.json.parseFromTokenSource(fixtures.Export, std.testing.allocator, &c_source, .{});
     defer c_result.deinit();
 
-    try std.testing.expectEqualDeep(c_result, result);
+    try std.testing.expectEqualDeep(c_result.value, result.value);
 }
 
 test "max_alloc_len string" {
