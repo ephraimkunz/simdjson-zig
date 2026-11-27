@@ -34,10 +34,12 @@ pub const TapeParser = struct {
         /// The parser may reallocate internal buffers as needed up to this amount as documents are passed to it.
         /// There's an implementation-defined limit of the smallest this can get which will be used if you set this too small.
         /// The default used here is what the simdjson library uses as a default.
+        /// A larger document fails with an error when parsing.
         max_capacity: usize = 0xFFFFFFFF,
 
         /// The maximum depth of this parser (the most deeply nested objects and arrays it can process).
         /// The default used here is what the simdjson library uses as a default.
+        /// A deeper document fails with an error when parsing.
         max_depth: usize = 1024,
 
         /// If zero_copy is set, the buffer isn't copied and padded internally when parsing. In performance testing
@@ -109,7 +111,7 @@ pub const TapeTokenSource = struct {
     cached_tape: ?Tape = null,
 
     pub const NextError = std.json.Scanner.NextError;
-    pub const PeekError = std.json.Scanner.PeekError;
+    pub const PeekError = std.json.Scanner.PeekError || std.mem.Allocator.Error;
     pub const SkipError = std.json.Scanner.SkipError;
     pub const AllocError = std.json.Scanner.AllocError;
 
@@ -135,9 +137,10 @@ pub const TapeTokenSource = struct {
 
     /// Optionally call before using another method that will parse lazily on demand, to get the full error from a parse.
     /// Otherwise, parsing happens lazily in the first method that needs parsed info, and is limited to the error return
-    /// set that that function returns. Those functions (peekNextTokenType, skipValue, etc) have error codes determined
-    /// by what the std.json functions expect, so that this token source can be a drop-in replacement for std.json.Scanner
-    /// and std.json.Reader.
+    /// set that that function returns. Those functions (peekNextTokenType, skipValue, etc) only return errors that std.json
+    /// has names for, so that this token source can be passed to any std.json function that takes one. As a result they
+    /// report a document over `max_depth` as `SyntaxError` and one over `max_capacity` as `OutOfMemory`, while this function
+    /// reports them as `Depth` and `Capacity`.
     pub fn ensureParse(self: *TapeTokenSource) TapeTokenSourceError!void {
         if (self.parseAndCacheTape()) |_| {
             return {};
@@ -154,8 +157,8 @@ pub const TapeTokenSource = struct {
         } else {
             return self.parseAndCacheTape() catch |e| {
                 return switch (e) {
-                    error.MemAlloc => error.OutOfMemory,
-                    error.Depth, error.Capacity, error.Syntax => error.SyntaxError,
+                    error.MemAlloc, error.Capacity => error.OutOfMemory,
+                    error.Depth, error.Syntax => error.SyntaxError,
                     error.Unknown => error.UnexpectedEndOfInput,
                 };
             };
@@ -222,12 +225,7 @@ pub const TapeTokenSource = struct {
 
     /// See [std.json.Scanner.peekNextTokenType()](https://ziglang.org/documentation/master/std/#std.json.Scanner.peekNextTokenType).
     pub fn peekNextTokenType(self: *TapeTokenSource) TapeTokenSource.PeekError!TokenType {
-        const t = self.tape() catch |e| {
-            return switch (e) {
-                error.OutOfMemory => error.SyntaxError, // Map to match stdlib API.
-                else => |to_return| to_return,
-            };
-        };
+        const t = try self.tape();
         if (self.pos >= t.tape.len) {
             // Matching what next() returns.
             return TokenType.end_of_document;
@@ -582,7 +580,39 @@ test "max capacity" {
     var tokenSource = TapeTokenSource.initWithParser(std.testing.allocator, parser, fixtures.export_data);
     defer tokenSource.deinit();
 
-    try std.testing.expectError(error.SyntaxError, std.json.parseFromTokenSource(fixtures.Export, std.testing.allocator, &tokenSource, .{}));
+    try std.testing.expectError(error.OutOfMemory, std.json.parseFromTokenSource(fixtures.Export, std.testing.allocator, &tokenSource, .{}));
+}
+
+test "max capacity and max depth through ensureParse" {
+    const fixtures = @import("fixtures.zig");
+
+    const small = try TapeParser.init(std.testing.allocator, .{ .max_capacity = 100 });
+    defer small.deinit();
+    var too_large = TapeTokenSource.initWithParser(std.testing.allocator, small, fixtures.export_data);
+    defer too_large.deinit();
+    try std.testing.expectError(error.Capacity, too_large.ensureParse());
+
+    const shallow = try TapeParser.init(std.testing.allocator, .{ .max_depth = 1 });
+    defer shallow.deinit();
+    var too_deep = TapeTokenSource.initWithParser(std.testing.allocator, shallow, fixtures.export_data);
+    defer too_deep.deinit();
+    try std.testing.expectError(error.Depth, too_deep.ensureParse());
+}
+
+test "allocation failure during the lazy parse" {
+    var failing = std.testing.FailingAllocator.init(std.testing.allocator, .{ .fail_index = 0 });
+
+    var peeked = TapeTokenSource.init(failing.allocator(), "[1]");
+    defer peeked.deinit();
+    try std.testing.expectError(error.OutOfMemory, peeked.peekNextTokenType());
+
+    var skipped = TapeTokenSource.init(failing.allocator(), "[1]");
+    defer skipped.deinit();
+    try std.testing.expectError(error.OutOfMemory, skipped.skipValue());
+
+    var advanced = TapeTokenSource.init(failing.allocator(), "[1]");
+    defer advanced.deinit();
+    try std.testing.expectError(error.OutOfMemory, advanced.next());
 }
 
 test "zero max_depth" {

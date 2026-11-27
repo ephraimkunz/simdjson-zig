@@ -1039,3 +1039,12 @@ test "max value len" {
     const result6 = try parseFromSliceLeaky([]u8, allocator, long, .{});
     try std.testing.expectEqualStrings(long[1 .. long.len - 1], result6);
 }
+
+test "allocation failure is reported as OutOfMemory" {
+    const Types = .{ u32, f64, bool, ?u32, []u8, []const u8, [2]u8, struct { a: u8 }, union(enum) { a: u8 }, enum { a }, std.json.Value };
+    inline for (Types) |T| {
+        var failing = std.testing.FailingAllocator.init(std.testing.allocator, .{ .fail_index = 0 });
+        try std.testing.expectError(error.OutOfMemory, parseFromSliceLeaky(T, failing.allocator(), "1", .{}));
+        try std.testing.expectError(error.OutOfMemory, parseFromSlice(T, failing.allocator(), "1", .{}));
+    }
+}

@@ -5,7 +5,12 @@
 //! replacements for the std.json functions of the same name.
 //! The `validate` function is also a drop-in replacement for the `std.json.validate` function.
 //!
-//! "Drop-in" as used above means "same API", such that a `const json = @import("std").json` statement could be swapped for `const json = @import("simdjson")` and would continue to compile and function properly.
+//! "Drop-in" as used above means:
+//! * `parseFromSlice`, `parseFromSliceLeaky` and `validate` have the same signatures and error sets as the std.json functions of the same name, so a call to the
+//!   std.json function can be replaced by a call to the function here and continue to compile. The rest of std.json (`ParseOptions`, `Parsed`, `Value`, `Stringify`, etc)
+//!   is not re-exported, so keep importing those from `std.json`.
+//! * `TapeTokenSource` can be passed to any std.json function that takes a token source, and that function then has the same error set as when it is given a `std.json.Scanner`.
+//!
 //! Note that memory usage might change (it's usually higher with simdjson) as well as performance (it's usually higher with simdjson). Furthermore, while the drop-in replacements have the same error sets as the std library functions,
 //! different errors from those sets may be returned from simdjson and the stdlib for a given JSON document, due to an inexact mapping between simdjson errors and stdlib errors and internal differences around when parsing steps happen.
 //!
@@ -61,4 +66,16 @@ test {
     _ = @import("JSONTestSuite_test.zig");
     _ = @import("fixtures.zig");
     _ = @import("error.zig");
+}
+
+test "signatures and error sets match std.json" {
+    const Scanner = std.json.Scanner;
+    try std.testing.expect(std.json.ParseError(TapeTokenSource) == std.json.ParseError(Scanner));
+
+    const allocator = std.testing.allocator;
+    inline for (.{ u8, []const u8, ?bool, std.json.Value, struct { x: f64 } }) |T| {
+        try std.testing.expect(@TypeOf(parseFromSlice(T, allocator, "", .{})) == @TypeOf(std.json.parseFromSlice(T, allocator, "", .{})));
+        try std.testing.expect(@TypeOf(parseFromSliceLeaky(T, allocator, "", .{})) == @TypeOf(std.json.parseFromSliceLeaky(T, allocator, "", .{})));
+    }
+    try std.testing.expect(@TypeOf(validate) == @TypeOf(std.json.validate));
 }

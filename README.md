@@ -64,7 +64,8 @@ The API can be split into two parts: (1) drop-in replacements for the Zig standa
 
 ### Interoperability with Zig JSON APIs
 This library strives to provide a drop-in replacement to the Zig standard library JSON API, allowing you to speed up JSON parsing without having to change much code.
-Simply stop importing `std.json` and instead import `simdjson`, or import them both and mix and match.
+The functions below have the same signatures and error sets as the `std.json` functions of the same name, so a call to one in the standard library can be replaced by a call to the other in simdjson-zig, or vice versa. The rest of `std.json` (`ParseOptions`, `Parsed`, `Value`, `Stringify`, etc) is not re-exported by simdjson-zig, so if you use them import both libraries and mix and match.
+
 | **Zig standard library API** | **Identical API in simdjson-zig** | **Notes** |
 |---|---|---|
 | [parseFromSlice](https://ziglang.org/documentation/master/std/#std.json.static.parseFromSlice) | ✅ | Always behaves as if ParseOptions.allocate == .alloc_always, as it can't return references to the original slice due to the way simdjson works. |
