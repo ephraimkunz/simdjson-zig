@@ -129,7 +129,7 @@ pub fn build(b: *std.Build) void {
     // Docs are generated from a compile step, so make a throwaway library
     // around the public module.
     const docs_lib = b.addLibrary(.{
-        .name = "docs",
+        .name = "simdjson", // Should be the same name as root file, so doc viewer knows it's the module's root.
         .root_module = mod,
     });
 
